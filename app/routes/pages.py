@@ -24,6 +24,7 @@ from ..db import (
 )
 from ..serializers import event_dict, match_dict, player_dict
 from ..templating import templates
+from ..timeline import build_timeline
 
 router = APIRouter()
 
@@ -51,7 +52,16 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
     rejection_counts = Counter(
         (row["reason"] or "other") for row in rejections
     )
+    match_data = match_dict(row)
+    clips_new = [dict(clip) for clip in list_clips(match_id, "new")]
     clips_saved = [dict(clip) for clip in list_clips(match_id, "saved")]
+    all_clips = clips_new + clips_saved
+    duration = 0.0
+    if match_data.get("result"):
+        duration = float((match_data["result"].get("summary") or {}).get("duration_s") or 0.0)
+    if duration <= 0 and all_clips:
+        duration = max(float(clip["end"]) for clip in all_clips)
+    timeline = build_timeline(all_clips, duration) if all_clips and duration > 0 else None
     saved_scores = [
         float(clip["saved_score"])
         for clip in clips_saved
@@ -71,7 +81,7 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
         request,
         "match.html",
         {
-            "match": match_dict(row),
+            "match": match_data,
             "events": events,
             "players": players,
             "players_map": {player["id"]: player for player in players},
@@ -79,8 +89,9 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             "kind_labels": EVENT_KIND_LABELS,
             "status_labels": STATUS_LABELS,
             "calibration_modes": CALIBRATION_MODES,
-            "clips_new": [dict(clip) for clip in list_clips(match_id, "new")],
+            "clips_new": clips_new,
             "clips_saved": clips_saved,
+            "timeline": timeline,
             "saved_average": saved_average,
             "active_tab": active_tab,
             "highlight_available": highlight_path.is_file(),

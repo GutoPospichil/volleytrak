@@ -857,3 +857,107 @@ video {
   width: 100%;
   max-height: 70vh;
 }
+.timeline-card {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b1218;
+}
+
+.timeline-scroll {
+  overflow-x: auto;
+  padding: 3px 0 2px;
+}
+
+.timeline-track,
+.timeline-labels {
+  display: grid;
+  grid-template-columns: repeat(var(--bins), minmax(14px, 1fr));
+  gap: 2px;
+  min-width: calc(var(--bins) * 16px);
+}
+
+.timeline-track {
+  height: 34px;
+}
+
+.timeline-cell {
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid #263542;
+  border-radius: 3px;
+  background: #111b24;
+  cursor: pointer;
+}
+
+.timeline-cell:hover,
+.timeline-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeline-cell.level-1 { background: rgba(245, 197, 66, 0.20); }
+.timeline-cell.level-2 { background: rgba(245, 197, 66, 0.38); }
+.timeline-cell.level-3 { background: rgba(245, 197, 66, 0.62); }
+.timeline-cell.level-4 { background: var(--accent); }
+
+.timeline-cell.has-saved {
+  box-shadow: inset 0 -4px 0 var(--ok);
+}
+
+.timeline-labels {
+  height: 16px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.timeline-label {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.timeline-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.timeline-key i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #263542;
+  border-radius: 2px;
+}
+
+.timeline-key .level-0 { background: #111b24; }
+.timeline-key .level-1 { background: rgba(245, 197, 66, 0.20); }
+.timeline-key .level-2 { background: rgba(245, 197, 66, 0.38); }
+.timeline-key .level-3 { background: rgba(245, 197, 66, 0.62); }
+.timeline-key .level-4 { background: var(--accent); }
+.timeline-key .saved-mark { background: var(--ok); }
+
+.timeline-gaps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.timeline-gaps .link {
+  font-size: 12px;
+  padding: 2px 0;
+}

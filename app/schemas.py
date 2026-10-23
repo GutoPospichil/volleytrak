@@ -65,6 +65,7 @@ class ClipRejectIn(BaseModel):
             "ball_on_floor",
             "not_rally",
             "bad_cut",
+            "half_rally",
             "duplicate",
             "other",
         }:

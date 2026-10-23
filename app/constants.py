@@ -27,6 +27,7 @@ CLIP_REJECTION_LABELS = {
     "ball_on_floor": "Bola no chão",
     "not_rally": "Não é rally",
     "bad_cut": "Corte errado",
+    "half_rally": "Rally pela metade",
     "duplicate": "Duplicado",
     "other": "Outro",
 }

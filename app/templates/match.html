@@ -127,6 +127,52 @@
   </div>
   <p class="muted small">Processar clipes roda bola em 30 fps, áudio, contatos e rallies — sem vídeo anotado.</p>
 
+  {% if timeline %}
+  <div class="timeline-card">
+    <div class="card-head">
+      <strong>Mapa de clipes</strong>
+      <span class="muted small">{{ timeline.coverage_pct }}% do vídeo coberto · {{ timeline.gaps|length }} vão(s) ≥ 1 min</span>
+    </div>
+    <div class="timeline-scroll">
+      <div class="timeline-track" style="--bins: {{ timeline.bins|length }}">
+        {% for bin in timeline.bins %}
+        <button
+          class="timeline-cell level-{{ bin.level }} {{ 'has-saved' if bin.has_saved else '' }}"
+          type="button"
+          data-seek-original="{{ bin.start }}"
+          title="{{ bin.label }} · {{ bin.coverage }}% coberto · {{ bin.new }}s novo(s), {{ bin.saved }}s salvo(s)"
+          aria-label="Abrir vídeo original em {{ bin.label }}"
+        ></button>
+        {% endfor %}
+      </div>
+      <div class="timeline-labels" style="--bins: {{ timeline.bins|length }}">
+        {% for bin in timeline.bins %}
+        <span class="timeline-label">{% if bin.minute % 5 == 0 %}{{ bin.label }}{% endif %}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="timeline-legend">
+      <span class="muted small">Clique em um bloco para abrir o vídeo original naquele minuto.</span>
+      <span class="timeline-key"><i class="level-0"></i>sem clipe</span>
+      <span class="timeline-key"><i class="level-1"></i>1–25%</span>
+      <span class="timeline-key"><i class="level-2"></i>26–50%</span>
+      <span class="timeline-key"><i class="level-3"></i>51–75%</span>
+      <span class="timeline-key"><i class="level-4"></i>76–100%</span>
+      <span class="timeline-key"><i class="saved-mark"></i>tem salvo</span>
+    </div>
+    {% if timeline.gaps %}
+    <div class="timeline-gaps">
+      <strong>Minutos sem clipes:</strong>
+      {% for gap in timeline.gaps %}
+      <button class="link" type="button" data-seek-original="{{ gap.start }}">{{ gap.start_label }}–{{ gap.end_label }} ({{ gap.duration_label }})</button>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted small">Nenhum vão de pelo menos 1 minuto.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="clip-tabs" role="tablist">
     <button class="clip-tab {{ 'active' if active_tab == 'new' else '' }}" type="button" data-tab="new" role="tab">
       Não verificados <span class="tab-count">{{ clips_new|length }}</span>

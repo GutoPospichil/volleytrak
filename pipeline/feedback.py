@@ -34,6 +34,22 @@ KEYWORDS = {
         "nao parou",
         "não parou",
     ],
+    "half_rally": [
+        "pela metade",
+        "rally pela metade",
+        "comeca no meio",
+        "começa no meio",
+        "comeca depois",
+        "começa depois",
+        "termina antes",
+        "acaba antes",
+        "cortou o comeco",
+        "cortou o começo",
+        "cortou o fim",
+        "faltou o comeco",
+        "faltou o começo",
+        "incompleto",
+    ],
     "bad_cut": [
         "corte",
         "cortou",
@@ -129,6 +145,11 @@ def build_profile(
             post_roll = min(post_roll, max(0.8, round(1.8 - 0.15 * end_hits, 2)))
         else:
             pre_roll = max(pre_roll, min(2.0, round(1.0 + 0.15 * bad_cut, 2)))
+
+    half_rally = inferred_counts.get("half_rally", 0)
+    if half_rally >= min_examples:
+        pre_roll = max(pre_roll, min(4.0, round(1.0 + 0.25 * half_rally, 2)))
+        post_roll = max(post_roll, min(4.0, round(1.8 + 0.20 * half_rally, 2)))
 
     min_ball_pct = float((baseline or {}).get("min_ball_pct", 0.10))
     if inferred_counts.get("not_rally", 0) >= min_examples:
