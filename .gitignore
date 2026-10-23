@@ -1,0 +1,17 @@
+.venv/
+portable-python/
+.cache/
+backups/
+transfer/
+installer/Output/
+data/
+bin/
+*.pyc
+__pycache__/
+*.mp4
+*.onnx
+*.pt
+*.safetensors
+*.db
+*.log
+.env

@@ -1,0 +1,691 @@
+{% extends "base.html" %}
+{% block title %}{{ match.title }} · VolleyTrak{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="/">← Partidas</a>
+    <h1>{{ match.title }}</h1>
+    <p class="muted">
+      {{ match.opponent or "Sem adversário" }}{% if match.played_on %} · {{ match.played_on }}{% endif %}
+      · <span class="badge {{ match.status }}">{{ status_labels.get(match.status, match.status) }}</span>
+    </p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Calibrar quadra</a>
+    <button id="process-btn" class="button primary" {% if match.status == "processing" %}disabled{% endif %}>Processar</button>
+    <button id="delete-match" class="button ghost" data-title="{{ match.title }}">Excluir</button>
+  </div>
+</div>
+
+<div id="job-banner" class="card banner" {% if match.status != "processing" %}hidden{% endif %} data-processing="{{ '1' if match.status == 'processing' else '0' }}">
+  <div class="card-head">
+    <strong>Processando</strong>
+    <span id="job-pct" class="muted">{{ match.progress|round(0)|int }}%</span>
+  </div>
+  <div class="bar"><span id="job-bar" style="width: {{ match.progress }}%"></span></div>
+  <p id="job-msg" class="muted small">{{ match.message }}</p>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Vídeo</h2>
+    <video id="player" controls preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
+    <p class="muted small">Tempo atual: <span id="current-time">0.0</span>s</p>
+  </section>
+
+  <section class="card">
+    <h2>Calibração e resumo</h2>
+    {% if match.calibration and match.calibration.points %}
+    {% set mode_info = calibration_modes.get(match.calibration.mode or "full") %}
+    <p class="ok small">Quadra calibrada com 4 pontos{% if mode_info %} · {{ mode_info.label }}{% endif %}.</p>
+    {% else %}
+    <p class="warn small">Quadra não calibrada. Sem isso, posições não são convertidas para metros.</p>
+    {% endif %}
+    <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Abrir calibração</a>
+
+    {% if match.result %}
+    <hr>
+    <div class="stats">
+      <div><span class="stat-value">{{ match.result.summary.frames_processed }}</span><span class="stat-label">frames</span></div>
+      <div><span class="stat-value">{{ match.result.summary.ball_visibility_pct }}%</span><span class="stat-label">bola em jogo</span></div>
+      <div><span class="stat-value">{{ match.result.summary.unique_person_tracks }}</span><span class="stat-label">pessoas</span></div>
+      <div><span class="stat-value">{{ match.result.summary.tentative_touches }}</span><span class="stat-label">toques auto</span></div>
+    </div>
+    <p class="muted small">Detector: {{ match.result.summary.detector }} · stride {{ match.result.summary.stride }} · {{ match.result.summary.duration_s }}s de vídeo</p>
+    {% for warning in match.result.warnings %}
+    <p class="warn small">{{ warning }}</p>
+    {% endfor %}
+    {% else %}
+    <p class="muted small">Nenhum processamento concluído ainda.</p>
+    {% endif %}
+  </section>
+</div>
+
+
+{% macro clip_card(clip, saved=False) %}
+<div
+  class="clip-card"
+  data-clip-id="{{ clip.id }}"
+  data-clip-status="{{ 'saved' if saved else 'new' }}"
+  data-clip-starred="{{ 1 if clip.starred else 0 }}"
+  data-clip-start="{{ clip.start }}"
+  data-src="/api/matches/{{ match.id }}/clips/{{ clip.id }}"
+>
+  <div class="clip-media">
+    <button class="clip-open" type="button" data-open-clip>
+      {% if clip.thumb %}
+      <img src="/api/matches/{{ match.id }}/clips/{{ clip.id }}/thumb" alt="Clipe em {{ '%.1f'|format(clip.start) }}s" loading="lazy">
+      {% else %}
+      <span class="clip-placeholder">Clipe</span>
+      {% endif %}
+    </button>
+    {% set score_value = clip.saved_score if saved and clip.saved_score is not none else clip.score %}
+    <span class="clip-score" title="{{ 'Nota do clipe salvo' if saved else 'Score do candidato' }}">{{ score_value|round(0)|int }}</span>
+    {% if clip.starred %}
+    <span class="clip-star-badge" title="Clipe excelente">&#9733;</span>
+    {% endif %}
+    {% set start_m = clip.start|int // 60 %}
+    {% set start_s = clip.start|int % 60 %}
+    {% set end_m = clip.end|int // 60 %}
+    {% set end_s = clip.end|int % 60 %}
+    <button
+      class="clip-time"
+      type="button"
+      data-seek-original="{{ clip.start }}"
+      title="Ir para o vídeo original em {{ '%d:%02d'|format(start_m, start_s) }}"
+    >{{ '%d:%02d'|format(start_m, start_s) }} – {{ '%d:%02d'|format(end_m, end_s) }}</button>
+  </div>
+  <div class="clip-actions">
+    <button
+      class="button star small {{ 'active' if clip.starred else '' }}"
+      type="button"
+      data-star-clip
+      data-starred="{{ 1 if clip.starred else 0 }}"
+      title="{{ 'Remover estrela' if clip.starred else ('Marcar excelente e salvar' if not saved else 'Marcar como excelente') }}"
+    >{% if clip.starred %}&#9733;{% else %}&#9734;{% endif %}</button>
+    {% if saved %}
+    <span class="badge done small">Salvo</span>
+    <button class="button secondary small" type="button" data-move-new>Voltar</button>
+    {% else %}
+    <button class="button primary small" type="button" data-save-clip>Salvar</button>
+    {% endif %}
+    <button class="button ghost small" type="button" data-delete-clip>Excluir</button>
+  </div>
+</div>
+{% endmacro %}
+
+<section class="card" id="clips-section">
+  <div class="card-head">
+    <div>
+      <h2>Rallies (clipes)</h2>
+      <p class="muted small">Revise os não verificados: salve os rallies bons ou exclua o resto.</p>
+    </div>
+    <div class="actions">
+      <button id="process-clips" class="button primary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Processar clipes</button>
+      <button id="generate-clips" class="button secondary small" type="button">Gerar clipes</button>
+    </div>
+  </div>
+  <p class="muted small">Processar clipes roda bola em 30 fps, áudio, contatos e rallies — sem vídeo anotado.</p>
+
+  <div class="clip-tabs" role="tablist">
+    <button class="clip-tab {{ 'active' if active_tab == 'new' else '' }}" type="button" data-tab="new" role="tab">
+      Não verificados <span class="tab-count">{{ clips_new|length }}</span>
+    </button>
+    <button class="clip-tab {{ 'active' if active_tab == 'saved' else '' }}" type="button" data-tab="saved" role="tab">
+      Salvos <span class="tab-count">{{ clips_saved|length }}</span>
+    </button>
+  </div>
+
+  {% if rejection_total %}
+  {% set feedback_counts = feedback_profile.inferred_counts if feedback_profile else rejection_counts %}
+  <details class="feedback-card">
+    <summary>Feedback de exclusões ({{ rejection_total }})</summary>
+    <div class="feedback-chips">
+      {% for reason, count in feedback_counts.items() %}
+      <span class="badge manual">{{ rejection_labels.get(reason, reason) }}: {{ count }}</span>
+      {% endfor %}
+    </div>
+    {% if feedback_profile %}
+    <p class="muted small">
+      Aprendizado aplicado na próxima geração: pré-roll {{ feedback_profile.trim.pre_roll }}s,
+      pós-roll {{ feedback_profile.trim.post_roll }}s,
+      velocidade ativa {{ feedback_profile.trim.active_speed }} m/s,
+      bola mínima {{ feedback_profile.min_ball_pct }}
+      {% if feedback_profile.notes_used %} · notas usadas: {{ feedback_profile.notes_used }}{% endif %}.
+    </p>
+    {% endif %}
+    <p class="muted small">Os motivos e as observações ficam registrados para orientar o ajuste do corte, do apito e da pontuação dos próximos clipes.</p>
+  </details>
+  {% endif %}
+
+  <div id="clips-new" class="clip-panel" {% if active_tab != 'new' %}hidden{% endif %}>
+    {% if clips_new %}
+    <div class="clip-grid">
+      {% for clip in clips_new %}{{ clip_card(clip) }}{% endfor %}
+    </div>
+    <p class="muted small">Clipes brutos, sem overlay. Clique para reproduzir; salve os rallies bons e exclua o resto.</p>
+    {% else %}
+    <p class="empty">Nenhum clipe não verificado. <a href="?tab=saved">Ver os clipes salvos</a> ou gere novos clipes.</p>
+    {% endif %}
+  </div>
+
+  <div id="clips-saved" class="clip-panel" {% if active_tab != 'saved' %}hidden{% endif %}>
+    <div class="saved-toolbar">
+      <button id="export-highlight" class="button primary small" type="button" {% if not clips_saved %}disabled{% endif %}>
+        Exportar highlight
+      </button>
+      <button id="score-saved" class="button secondary small" type="button" {% if not clips_saved %}disabled{% endif %}>
+        Calcular notas
+      </button>
+      <span class="muted small">{{ clips_saved|length }} clipe(s) salvo(s){% if saved_average is not none %} · nota média {{ saved_average }}{% endif %}.</span>
+      {% if highlight_available %}
+      <a class="button ghost small" href="/api/matches/{{ match.id }}/highlight" download>Baixar último highlight</a>
+      {% endif %}
+    </div>
+    {% if clips_saved %}
+    <div class="clip-grid">
+      {% for clip in clips_saved %}{{ clip_card(clip, true) }}{% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">Nenhum clipe salvo ainda. Vá em <a href="?tab=new">Não verificados</a> e salve os rallies bons.</p>
+    {% endif %}
+  </div>
+
+  <div id="clip-modal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="card-head">
+        <strong>Clipe <span id="clip-modal-status" class="muted small"></span></strong>
+        <button id="close-clip" class="button ghost small" type="button">Fechar</button>
+      </div>
+      <video id="clip-video" controls playsinline></video>
+      <div class="actions">
+        <button id="seek-original" class="button secondary small" type="button">Ver no vídeo original</button>
+        <button id="star-clip" class="button star small" type="button">&#9734; Destacar</button>
+        <button id="save-clip" class="button primary small" type="button">Salvar clipe</button>
+        <button id="move-clip-new" class="button secondary small" type="button" hidden>Voltar para não verificados</button>
+        <button id="delete-clip" class="button ghost small" type="button">Excluir clipe</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reject-modal" class="modal" hidden>
+    <div class="modal-box reject-box">
+      <div class="card-head">
+        <strong>Excluir clipe</strong>
+        <button id="close-reject" class="button ghost small" type="button">Fechar</button>
+      </div>
+      <p class="muted small">Por que este clipe não deve entrar no hall de rallies?</p>
+      <label>Motivo
+        <select id="reject-reason">
+          {% for value, label in rejection_labels.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Observação
+        <textarea id="reject-note" rows="3" maxlength="500" placeholder="Opcional: descreva o problema"></textarea>
+      </label>
+      <div class="actions">
+        <button id="confirm-reject" class="button primary small" type="button">Excluir e registrar motivo</button>
+        <button id="cancel-reject" class="button ghost small" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Eventos</h2>
+    <span class="muted small">{{ events|length }} registrado(s)</span>
+  </div>
+
+  <form id="event-form" class="event-form">
+    <div class="row wrap">
+      <label>Tempo (s)
+        <input id="event-t" name="t" type="number" step="0.1" min="0" required>
+      </label>
+      <button type="button" id="use-time" class="button ghost small">Usar tempo do vídeo</button>
+      <label>Tipo
+        <select name="kind" required>
+          {% for value, label in kinds.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Set
+        <input name="set_no" type="number" min="1" max="5">
+      </label>
+      <label>Rally
+        <input name="rally_no" type="number" min="1">
+      </label>
+      <label>Jogador
+        <select name="player_id">
+          <option value="">—</option>
+          {% for p in players %}
+          <option value="{{ p.id }}">#{{ p.number or "?" }} {{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>Observação
+      <input name="note" placeholder="Opcional">
+    </label>
+    <button class="button primary" type="submit">Adicionar evento</button>
+  </form>
+
+  {% if events %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Tempo</th><th>Tipo</th><th>Jogador</th><th>Set/Rally</th><th>Origem</th><th>Obs.</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        {% set p = players_map.get(e.player_id) %}
+        <tr>
+          <td><button class="link" data-seek="{{ e.t }}">{{ '%.1f'|format(e.t) }}s</button></td>
+          <td>{{ kind_labels.get(e.kind, e.kind) }}</td>
+          <td>{% if p %}#{{ p.number or "?" }} {{ p.name }}{% else %}—{% endif %}</td>
+          <td>{{ e.set_no or "—" }}/{{ e.rally_no or "—" }}</td>
+          <td><span class="badge {{ 'auto' if e.source == 'auto' else 'manual' }}">{{ "Auto" if e.source == "auto" else "Manual" }}</span></td>
+          <td>{{ e.note or "—" }}</td>
+          <td><button class="button ghost small delete-event" data-id="{{ e.id }}">Excluir</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">Nenhum evento. Processe o vídeo para gerar toques provisórios ou adicione manualmente.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const matchId = {{ match.id }};
+const player = document.getElementById('player');
+const currentTime = document.getElementById('current-time');
+
+if (player) {
+  player.addEventListener('timeupdate', () => {
+    currentTime.textContent = player.currentTime.toFixed(1);
+  });
+}
+
+function seekOriginal(time) {
+  if (!player) return;
+  player.currentTime = Math.max(0, Number(time) || 0);
+  player.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  player.play().catch(() => {});
+}
+
+document.querySelectorAll('[data-seek-original]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    seekOriginal(button.dataset.seekOriginal);
+  });
+});
+
+document.getElementById('use-time').addEventListener('click', () => {
+  if (!player) return;
+  document.getElementById('event-t').value = player.currentTime.toFixed(2);
+});
+
+document.getElementById('event-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const body = {
+    t: parseFloat(data.get('t')),
+    kind: data.get('kind'),
+    set_no: data.get('set_no') ? parseInt(data.get('set_no'), 10) : null,
+    rally_no: data.get('rally_no') ? parseInt(data.get('rally_no'), 10) : null,
+    player_id: data.get('player_id') ? parseInt(data.get('player_id'), 10) : null,
+    note: data.get('note') || ''
+  };
+  const response = await fetch(`/api/matches/${matchId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Erro ao salvar o evento.');
+    return;
+  }
+  location.reload();
+});
+
+document.querySelectorAll('.delete-event').forEach((button) => {
+  button.addEventListener('click', async () => {
+    if (!confirm('Excluir este evento?')) return;
+    await fetch(`/api/events/${button.dataset.id}`, { method: 'DELETE' });
+    location.reload();
+  });
+});
+
+document.querySelectorAll('[data-seek]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (!player) return;
+    player.currentTime = parseFloat(button.dataset.seek);
+    player.play().catch(() => {});
+  });
+});
+
+document.getElementById('process-btn').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  const response = await fetch(`/api/matches/${matchId}/process`, { method: 'POST' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível iniciar o processamento.');
+    button.disabled = false;
+    return;
+  }
+  location.reload();
+});
+
+document.getElementById('delete-match').addEventListener('click', async (event) => {
+  const title = event.currentTarget.dataset.title;
+  if (!confirm(`Excluir a partida "${title}" e os arquivos gerados?`)) return;
+  await fetch(`/api/matches/${matchId}`, { method: 'DELETE' });
+  location.href = '/';
+});
+
+const clipModal = document.getElementById('clip-modal');
+const clipVideo = document.getElementById('clip-video');
+const clipModalStatus = document.getElementById('clip-modal-status');
+const saveClipButton = document.getElementById('save-clip');
+const moveClipNewButton = document.getElementById('move-clip-new');
+const starClipButton = document.getElementById('star-clip');
+const seekOriginalButton = document.getElementById('seek-original');
+let currentClipId = null;
+let currentClipStatus = null;
+let currentClipStarred = false;
+let currentClipStart = null;
+
+function openClip(card) {
+  currentClipId = card.dataset.clipId;
+  currentClipStatus = card.dataset.clipStatus;
+  currentClipStarred = card.dataset.clipStarred === '1';
+  currentClipStart = parseFloat(card.dataset.clipStart || '0');
+  clipVideo.src = card.dataset.src;
+  clipModalStatus.textContent = currentClipStatus === 'saved' ? '· salvo' : '· não verificado';
+  saveClipButton.hidden = currentClipStatus === 'saved';
+  moveClipNewButton.hidden = currentClipStatus !== 'saved';
+  starClipButton.textContent = currentClipStarred ? '\u2605 Favorito' : '\u2606 Destacar';
+  starClipButton.classList.toggle('active', currentClipStarred);
+  clipModal.hidden = false;
+  clipVideo.play().catch(() => {});
+}
+
+document.querySelectorAll('[data-open-clip]').forEach((button) => {
+  button.addEventListener('click', () => openClip(button.closest('.clip-card')));
+});
+
+function closeClip() {
+  clipModal.hidden = true;
+  clipVideo.pause();
+  clipVideo.removeAttribute('src');
+  clipVideo.load();
+  currentClipId = null;
+  currentClipStatus = null;
+  currentClipStarred = false;
+  currentClipStart = null;
+}
+
+async function toggleStar(clipId, starred) {
+  const response = await fetch(`/api/clips/${clipId}/star`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ starred })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível atualizar a estrela.');
+    return;
+  }
+  location.reload();
+}
+
+async function updateClipStatus(clipId, status) {
+  const response = await fetch(`/api/clips/${clipId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível atualizar o clipe.');
+    return;
+  }
+  if (status === 'saved') {
+    await fetch(`/api/matches/${matchId}/clips/score-saved`, { method: 'POST' });
+  }
+  location.reload();
+}
+
+let rejectClipId = null;
+const rejectModal = document.getElementById('reject-modal');
+const rejectReason = document.getElementById('reject-reason');
+const rejectNote = document.getElementById('reject-note');
+
+function openReject(clipId) {
+  rejectClipId = clipId;
+  rejectReason.value = 'dead_time';
+  rejectNote.value = '';
+  rejectModal.hidden = false;
+  rejectReason.focus();
+}
+
+function closeReject() {
+  rejectModal.hidden = true;
+  rejectClipId = null;
+}
+
+async function submitReject() {
+  if (!rejectClipId) return;
+  const button = document.getElementById('confirm-reject');
+  button.disabled = true;
+  const response = await fetch(`/api/clips/${rejectClipId}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: rejectReason.value, note: rejectNote.value })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível registrar a exclusão.');
+    button.disabled = false;
+    return;
+  }
+  location.reload();
+}
+
+document.getElementById('close-reject').addEventListener('click', closeReject);
+document.getElementById('cancel-reject').addEventListener('click', closeReject);
+document.getElementById('confirm-reject').addEventListener('click', submitReject);
+rejectModal.addEventListener('click', (event) => {
+  if (event.target === rejectModal) closeReject();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !rejectModal.hidden) closeReject();
+});
+
+document.querySelectorAll('[data-save-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    updateClipStatus(button.closest('.clip-card').dataset.clipId, 'saved');
+  });
+});
+document.querySelectorAll('[data-move-new]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    updateClipStatus(button.closest('.clip-card').dataset.clipId, 'new');
+  });
+});
+document.querySelectorAll('[data-delete-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openReject(button.closest('.clip-card').dataset.clipId);
+  });
+});
+document.querySelectorAll('[data-star-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const card = button.closest('.clip-card');
+    toggleStar(card.dataset.clipId, card.dataset.clipStarred !== '1');
+  });
+});
+
+document.getElementById('close-clip').addEventListener('click', closeClip);
+clipModal.addEventListener('click', (event) => {
+  if (event.target === clipModal) closeClip();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !clipModal.hidden) closeClip();
+});
+saveClipButton.addEventListener('click', () => {
+  if (currentClipId && currentClipStatus !== 'saved') {
+    updateClipStatus(currentClipId, 'saved');
+  }
+});
+moveClipNewButton.addEventListener('click', () => {
+  if (currentClipId && currentClipStatus === 'saved') {
+    updateClipStatus(currentClipId, 'new');
+  }
+});
+document.getElementById('delete-clip').addEventListener('click', () => {
+  if (currentClipId) openReject(currentClipId);
+});
+starClipButton.addEventListener('click', () => {
+  if (currentClipId) toggleStar(currentClipId, !currentClipStarred);
+});
+seekOriginalButton.addEventListener('click', () => {
+  if (currentClipStart === null) return;
+  const start = currentClipStart;
+  closeClip();
+  seekOriginal(start);
+});
+
+document.querySelectorAll('.clip-tab').forEach((button) => {
+  button.addEventListener('click', () => {
+    const tab = button.dataset.tab;
+    document.querySelectorAll('.clip-tab').forEach((item) => {
+      item.classList.toggle('active', item === button);
+    });
+    document.getElementById('clips-new').hidden = tab !== 'new';
+    document.getElementById('clips-saved').hidden = tab !== 'saved';
+    history.replaceState(null, '', `?tab=${tab}`);
+  });
+});
+
+const exportHighlight = document.getElementById('export-highlight');
+if (exportHighlight) {
+  exportHighlight.addEventListener('click', async () => {
+    const label = exportHighlight.textContent;
+    exportHighlight.disabled = true;
+    exportHighlight.textContent = 'Montando...';
+    const response = await fetch(`/api/matches/${matchId}/highlight`, { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      alert(data.detail || 'Não foi possível montar o highlight.');
+      exportHighlight.textContent = label;
+      exportHighlight.disabled = false;
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = data.url;
+    link.download = `highlight-${matchId}.mp4`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    exportHighlight.textContent = 'Highlight gerado';
+    setTimeout(() => {
+      exportHighlight.textContent = label;
+      exportHighlight.disabled = false;
+    }, 2500);
+  });
+}
+
+const scoreSavedButton = document.getElementById('score-saved');
+if (scoreSavedButton) {
+  scoreSavedButton.addEventListener('click', async () => {
+    scoreSavedButton.disabled = true;
+    scoreSavedButton.textContent = 'Calculando...';
+    const response = await fetch(`/api/matches/${matchId}/clips/score-saved`, { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível calcular as notas.');
+      scoreSavedButton.disabled = false;
+      scoreSavedButton.textContent = 'Calcular notas';
+      return;
+    }
+    location.reload();
+  });
+}
+
+const processClips = document.getElementById('process-clips');
+if (processClips) {
+  processClips.addEventListener('click', async () => {
+    if (!confirm('Processar clipes com VballNet, áudio e contatos? Isso pode levar bastante tempo e mantém os clipes já salvos.')) return;
+    processClips.disabled = true;
+    processClips.textContent = 'Iniciando...';
+    const response = await fetch(`/api/matches/${matchId}/clips/process`, { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível iniciar o processamento de clipes.');
+      processClips.disabled = false;
+      processClips.textContent = 'Processar clipes';
+      return;
+    }
+    location.reload();
+  });
+}
+
+const generateClips = document.getElementById('generate-clips');
+if (generateClips) {
+  generateClips.addEventListener('click', async () => {
+    if (!confirm('Gerar clipes a partir da trajetória da bola? Isso pode levar alguns minutos e mantém os clipes já salvos.')) return;
+    const before = [...document.querySelectorAll('.clip-card')].map((card) => card.dataset.clipId).sort().join(',');
+    generateClips.disabled = true;
+    generateClips.textContent = 'Gerando...';
+    const response = await fetch(`/api/matches/${matchId}/clips/generate`, { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível iniciar a geração dos clipes.');
+      generateClips.disabled = false;
+      generateClips.textContent = 'Gerar clipes';
+      return;
+    }
+    const timer = setInterval(async () => {
+      const clips = await (await fetch(`/api/matches/${matchId}/clips`)).json().catch(() => []);
+      const after = clips.map((clip) => String(clip.id)).sort().join(',');
+      if (after !== before) {
+        clearInterval(timer);
+        location.reload();
+      }
+    }, 5000);
+    setTimeout(() => {
+      clearInterval(timer);
+      location.reload();
+    }, 180000);
+  });
+}
+
+const banner = document.getElementById('job-banner');
+if (banner && banner.dataset.processing === '1') {
+  const timer = setInterval(async () => {
+    const response = await fetch(`/api/matches/${matchId}`);
+    if (!response.ok) return;
+    const match = await response.json();
+    document.getElementById('job-pct').textContent = `${Math.round(match.progress)}%`;
+    document.getElementById('job-bar').style.width = `${match.progress}%`;
+    document.getElementById('job-msg').textContent = match.message || '';
+    if (match.status !== 'processing') {
+      clearInterval(timer);
+      location.reload();
+    }
+  }, 3000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Jogadores · VolleyTrak{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Jogadores</h1>
+    <p class="muted">Roster usado para atribuir eventos manualmente.</p>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Adicionar jogador</h2>
+    <form id="player-form">
+      <label>Nome
+        <input name="name" required maxlength="80">
+      </label>
+      <div class="row">
+        <label>Número
+          <input name="number" type="number" min="0" max="99">
+        </label>
+        <label>Equipe
+          <select name="team">
+            <option value="home">Nossa equipe</option>
+            <option value="away">Adversário</option>
+          </select>
+        </label>
+      </div>
+      <button class="button primary" type="submit">Adicionar</button>
+      <p id="player-status" class="muted small"></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Roster</h2>
+    {% if players %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>#</th><th>Nome</th><th>Equipe</th><th></th></tr></thead>
+        <tbody>
+          {% for p in players %}
+          <tr>
+            <td>{{ p.number if p.number is not none else "—" }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ "Nossa" if p.team == "home" else "Adversário" }}</td>
+            <td><button class="button ghost small delete-player" data-id="{{ p.id }}">Excluir</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">Nenhum jogador cadastrado.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('player-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const status = document.getElementById('player-status');
+  status.textContent = 'Salvando...';
+  const response = await fetch('/api/players', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: data.get('name'),
+      number: data.get('number') ? parseInt(data.get('number'), 10) : null,
+      team: data.get('team')
+    })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    status.textContent = error.detail || 'Erro ao salvar o jogador.';
+    return;
+  }
+  location.reload();
+});
+
+document.querySelectorAll('.delete-player').forEach((button) => {
+  button.addEventListener('click', async () => {
+    if (!confirm('Excluir este jogador?')) return;
+    await fetch(`/api/players/${button.dataset.id}`, { method: 'DELETE' });
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

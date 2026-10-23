@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Partidas · VolleyTrak{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Análise de vôlei local</p>
+  <h1>Transforme vídeo em estatísticas</h1>
+  <p class="muted hero-text">Envie um vídeo ou aponte para um arquivo do seu computador. Calibre a quadra e processe com IA rodando na sua máquina.</p>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Enviar vídeo</h2>
+    <form id="upload-form">
+      <label>Arquivo
+        <input type="file" name="file" accept="video/*,.mkv,.avi,.mov,.m4v,.webm" required>
+      </label>
+      <label>Título
+        <input name="title" placeholder="Ex.: Treino sub-19">
+      </label>
+      <div class="row">
+        <label>Adversário
+          <input name="opponent" placeholder="Opcional">
+        </label>
+        <label>Data
+          <input type="date" name="played_on">
+        </label>
+      </div>
+      <button class="button primary" type="submit">Enviar vídeo</button>
+      <div id="upload-status" class="upload-status" hidden>
+        <div class="bar"><span></span></div>
+        <p class="muted small"></p>
+      </div>
+      <p class="muted small">Vídeos já no PC devem ser registrados ao lado para evitar cópia.</p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Usar vídeo local</h2>
+    <form id="local-form">
+      <label>Caminho completo
+        <input name="path" placeholder="D:\videos\jogo.mp4" required>
+      </label>
+      <label>Título
+        <input name="title" placeholder="Opcional">
+      </label>
+      <div class="row">
+        <label>Adversário
+          <input name="opponent" placeholder="Opcional">
+        </label>
+        <label>Data
+          <input type="date" name="played_on">
+        </label>
+      </div>
+      <button class="button secondary" type="submit">Registrar</button>
+      <p id="local-status" class="muted small"></p>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Partidas</h2>
+    <span class="muted small">{{ matches|length }} registrada(s)</span>
+  </div>
+  {% if matches %}
+  <div class="match-list">
+    {% for m in matches %}
+    <a class="match-row" href="/matches/{{ m.id }}">
+      <div class="match-main">
+        <strong>{{ m.title }}</strong>
+        <span class="muted small">{{ m.opponent or "Sem adversário" }}{% if m.played_on %} · {{ m.played_on }}{% endif %}</span>
+      </div>
+      <div class="match-side">
+        <span class="badge {{ m.status }}">{{ status_labels.get(m.status, m.status) }}</span>
+        {% if m.status == "processing" %}
+        <span class="muted small">{{ m.progress|round(0)|int }}%</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">Nenhuma partida ainda. Envie um vídeo ou registre um caminho local.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const uploadForm = document.getElementById('upload-form');
+const uploadStatus = document.getElementById('upload-status');
+const uploadBar = uploadStatus.querySelector('.bar span');
+const uploadText = uploadStatus.querySelector('p');
+
+uploadForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const button = uploadForm.querySelector('button');
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/matches');
+  uploadStatus.hidden = false;
+  button.disabled = true;
+  uploadText.textContent = 'Enviando...';
+  xhr.upload.onprogress = (progress) => {
+    if (!progress.lengthComputable) return;
+    const percent = Math.round(progress.loaded / progress.total * 100);
+    uploadBar.style.width = percent + '%';
+    uploadText.textContent = `Enviando... ${percent}%`;
+  };
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      const match = JSON.parse(xhr.responseText);
+      location.href = `/matches/${match.id}`;
+      return;
+    }
+    let message = 'Falha no upload';
+    try { message = JSON.parse(xhr.responseText).detail || message; } catch (error) {}
+    uploadText.textContent = message;
+    button.disabled = false;
+  };
+  xhr.onerror = () => {
+    uploadText.textContent = 'Erro de rede durante o upload.';
+    button.disabled = false;
+  };
+  xhr.send(new FormData(uploadForm));
+});
+
+const localForm = document.getElementById('local-form');
+const localStatus = document.getElementById('local-status');
+
+localForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = new FormData(localForm);
+  localStatus.textContent = 'Registrando...';
+  const response = await fetch('/api/matches/local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: data.get('path'),
+      title: data.get('title'),
+      opponent: data.get('opponent'),
+      played_on: data.get('played_on')
+    })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    localStatus.textContent = error.detail || 'Erro ao registrar o vídeo.';
+    return;
+  }
+  const match = await response.json();
+  location.href = `/matches/${match.id}`;
+});
+</script>
+{% endblock %}
