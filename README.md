@@ -81,3 +81,11 @@ Modelos usados:
 ## Créditos
 
 Projeto pessoal em desenvolvimento. Dependências e modelos mantêm suas licenças originais; verifique antes de redistribuir comercialmente.
+
+
+## Mapa de clipes e rally pela metade
+
+- O mapa mostra a cobertura dos clipes na timeline; blocos vazios são minutos sem clipes.
+- Clique em um bloco ou em um vão para abrir o vídeo original naquele ponto.
+- Ao excluir um clipe que começa no meio ou termina antes do ponto, escolha **Rally pela metade**.
+- Esse motivo, depois de alguns exemplos, aumenta o pré/pós-roll para tentar pegar o rally completo.
