@@ -199,3 +199,29 @@ O banco sozinho não elimina a revisão manual, mas permite evoluir para **apren
 4. com mais exemplos, trocar a regressão logística por um modelo com mais features/boosting.
 
 Também é possível importar o CSV de outros testadores para somar o banco antes de treinar.
+
+## Editar o corte do clipe
+
+Na página da partida, cada card tem um botão **✎** e o player do clipe tem **Editar corte**. Também é possível apertar **E** com o clipe aberto.
+
+Na janela de edição:
+
+- o vídeo original é aberto no ponto do clipe;
+- ajuste **Início** e **Fim** em segundos ou use os botões de **-2s / -1s / -0.5s / +0.5s / +1s / +2s**;
+- **Usar tempo atual** define o início ou o fim no ponto em que o vídeo está;
+- **Pré-visualizar** toca exatamente o trecho marcado;
+- **Salvar como clipe bom após editar** (marcado por padrão) salva o clipe corrigido. Clipes já salvos continuam salvos.
+
+Ao salvar, o app recorta o vídeo original de novo, atualiza a miniatura, o tempo e o score, preserva o clipe antigo como histórico e registra o ajuste no aprendizado.
+
+### O que o aprendizado faz com a edição
+
+- o corte editado entra no banco como exemplo **bom**, com peso maior;
+- o corte anterior entra como sinal de **corte errado** ou **tempo morto**, conforme o ajuste:
+  - começou depois do saque → aumenta o pré-roll;
+  - terminou antes do ponto → aumenta o pós-roll;
+  - as duas coisas → aumenta os dois;
+  - cortou excesso → trata como tempo morto;
+- a página **Aprendizado → Edições manuais** mostra o **score gerado**, a **qualidade original → editada** e o quanto o início/fim mudou.
+
+O score gerado é o score do candidato que apareceu na revisão. A qualidade original/editada usa a mesma fórmula nos dois cortes, para comparar de forma justa o efeito do ajuste. O mapa de calor é atualizado ao recarregar a página.

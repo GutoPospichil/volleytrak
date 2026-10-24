@@ -8,7 +8,12 @@ from pathlib import Path
 
 from app.config import JOB_DIR
 from app.constants import CLIP_REJECTION_CANONICAL, CLIP_REJECTION_LABELS
-from app.db import get_match, list_clip_rejections, list_matches
+from app.db import (
+    get_match,
+    list_clip_edits,
+    list_clip_rejections,
+    list_matches,
+)
 
 KEYWORDS = {
     "dead_time": [
@@ -169,8 +174,25 @@ def build_profile(
     }
 
 
+def _edit_feedback_rows(match_id: int) -> list[dict]:
+    rows = []
+    for edit in list_clip_edits(match_id):
+        detail = edit["detail"] or ""
+        reason = edit["reason"] or ("bad_cut" if detail else "dead_time")
+        rows.append(
+            {
+                "reason": reason,
+                "detail": detail,
+                "note": "edição manual",
+                "features": edit["features"],
+            }
+        )
+    return rows
+
+
 def build_profile_for_match(match_id: int) -> dict:
     rejections = list_clip_rejections(match_id)
+    rejections.extend(_edit_feedback_rows(match_id))
     baseline = None
     global_path = JOB_DIR.parent / "feedback_profile.json"
     if global_path.is_file():
@@ -191,6 +213,7 @@ def build_global_profile() -> dict:
     rows = []
     for match in list_matches():
         rows.extend(list_clip_rejections(match["id"]))
+        rows.extend(_edit_feedback_rows(match["id"]))
     profile = build_profile(rows)
     path = JOB_DIR.parent / "feedback_profile.json"
     path.write_text(

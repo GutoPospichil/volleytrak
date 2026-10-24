@@ -1,26 +1,36 @@
-# VolleyTrak 0.3.5 beta
+# VolleyTrak 0.3.6 beta
 
-## Banco de aprendizado
-- Nova tabela local `learning_examples`: cada clipe salvo ou excluído vira um exemplo com label, motivo, features e peso.
-- O histórico existente é importado automaticamente na primeira execução.
-- Página **Aprendizado** com contagens, motivos, exemplos recentes e AUC do ranker.
-- Exportação do banco em **CSV** ou **JSON** (sem vídeos), útil para juntar feedback de testadores.
-- Botão **Atualizar modelos agora**: treina o ranker e recalcula o perfil global sem gerar clipes.
-- O ranker agora usa pesos: estrela = 2, duplicado = 0.5, corte errado = 0.8, tempo morto/fora de rally = 1.2.
-- O perfil global passou a ser recalculado a partir de todos os feedbacks (pré-roll 2.9 s, pós-roll 1.7 s, bola mínima 18%).
+## Editar corte do clipe
+- Botão **✎** no card e **Editar corte** no player; atalho **E**.
+- Janela de edição com o vídeo original, início/fim em segundos e botões de ajuste rápido:
+  - **-2s / -1s / -0.5s / +0.5s / +1s / +2s**;
+  - **Usar tempo atual** como início ou fim;
+  - **Pré-visualizar** o trecho marcado.
+- **Salvar como clipe bom após editar** (marcado por padrão).
+- O clipe é recortado de novo, com miniatura, tempo e score atualizados.
+- Clipes já salvos continuam salvos.
+- O vídeo e a miniatura usam cache desativado para a edição aparecer na hora.
 
-## Revisão rápida
-- Botão **Revisão rápida** abre o primeiro clipe não verificado.
-- Atalhos: **S** salvar, **D** excluir, **←/→** navegar, **Espaço** play/pause, **Esc** fechar.
-- **Avançar após salvar/excluir** automático.
-- Ordenação **Mais incertos primeiro** pelo score do ranker.
-- Salvar/excluir atualiza a lista na hora, sem recarregar a página.
-- A nota dos salvos é calculada sob demanda em **Calcular notas**, deixando a revisão mais rápida.
+## Edição como aprendizado
+- O corte editado entra no banco como exemplo **bom**, com peso maior.
+- O corte anterior é registrado como **corte errado** ou **tempo morto**, conforme o ajuste:
+  - começou depois do saque → aumenta pré-roll;
+  - terminou antes do ponto → aumenta pós-roll;
+  - as duas coisas → aumenta os dois;
+  - cortou excesso → tempo morto.
+- O perfil global e o perfil da partida são recalculados.
+- Nova tabela `clip_edits` guarda o histórico de ajustes.
 
-## Outros
-- O modo de áudio e o aprendizado aplicado continuam visíveis na partida.
-- O link **Aprendizado** aparece no topo do app.
-- Esta versão não faz triagem automática de clipes: com a AUC atual (~0.64), a revisão dos incertos ainda é o caminho seguro.
+## Análise na página Aprendizado
+- Nova seção **Edições manuais**.
+- Mostra quantidade de edições, quantas melhoraram, Δ médio de qualidade e deslocamento médio de início/fim.
+- Tabela com **score gerado**, **qualidade original → editada**, ajuste em segundos, motivo e data.
+- O score gerado é o candidato da revisão; a qualidade original/editada usa a mesma fórmula para comparar o efeito do corte.
+
+## Base da 0.3.5
+- Banco de aprendizado `learning_examples` com CSV/JSON.
+- Revisão rápida com atalhos, auto-avançar e ordenação por incerteza.
+- Perfil global recalculado a partir de todos os feedbacks.
 
 Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
 Windows 10/11 x64, driver NVIDIA e ~8 GB livres.

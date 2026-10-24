@@ -17,8 +17,10 @@ from ..constants import (
     STATUS_LABELS,
 )
 from ..db import (
+    clip_edit_stats,
     get_match,
     learning_stats,
+    list_recent_clip_edits,
     list_recent_learning_examples,
     list_clip_rejections,
     list_clips,
@@ -76,6 +78,11 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             confidence = float(clip.get("score") or 0.0)
         clip["ranker_score"] = ranker_score
         clip["uncertainty"] = round(abs(confidence - 50.0) / 50.0, 3)
+        clip["edited"] = bool(payload.get("edited"))
+        clip["edited_score"] = payload.get("edited_score")
+        clip["generated_score"] = payload.get("generated_score", clip.get("score"))
+        clip["score_delta"] = payload.get("score_delta")
+        clip["fair_delta"] = payload.get("fair_delta")
         return clip
 
     clips_new = [enrich_clip(dict(clip)) for clip in list_clips(match_id, "new")]
@@ -159,6 +166,18 @@ def learning_page(request: Request):
         reasons[canonical] += int(count)
     stats["reasons"] = dict(reasons)
     recent = [dict(row) for row in list_recent_learning_examples(20)]
+    recent_edits = [dict(row) for row in list_recent_clip_edits(12)]
+    for row in recent_edits:
+        reason = row["reason"] or "other"
+        canonical = CLIP_REJECTION_CANONICAL.get(reason, reason)
+        row["reason_label"] = CLIP_REJECTION_LABELS.get(canonical, canonical)
+        row["detail_label"] = CLIP_REJECTION_DETAIL_LABELS.get(
+            row["detail"] or "", row["detail"] or ""
+        )
+        try:
+            row["features_data"] = json.loads(row["features"]) if row["features"] else {}
+        except (TypeError, json.JSONDecodeError):
+            row["features_data"] = {}
     for row in recent:
         canonical = CLIP_REJECTION_CANONICAL.get(
             row["reason"] or "other", row["reason"] or "other"
@@ -184,6 +203,8 @@ def learning_page(request: Request):
             "ranker_info": ranker_info,
             "rejection_labels": CLIP_REJECTION_LABELS,
             "rejection_details": CLIP_REJECTION_DETAIL_LABELS,
+            "edit_stats": clip_edit_stats(),
+            "recent_edits": recent_edits,
         },
     )
 

@@ -110,6 +110,23 @@ class ManualClipIn(BaseModel):
         return self
 
 
+class ClipEditIn(BaseModel):
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    save: bool = True
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.end <= self.start:
+            raise ValueError("o fim do clipe deve ser maior que o início")
+        duration = self.end - self.start
+        if duration < 1.0:
+            raise ValueError("o clipe precisa ter pelo menos 1 segundo")
+        if duration > 180.0:
+            raise ValueError("o clipe é limitado a 3 minutos")
+        return self
+
+
 class ClipStarIn(BaseModel):
     starred: bool = True
 

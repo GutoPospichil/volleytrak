@@ -112,6 +112,11 @@
   data-clip-end="{{ clip.end }}"
   data-score="{{ clip.score }}"
   data-uncertainty="{{ clip.uncertainty }}"
+  data-edited="{{ 1 if clip.edited else 0 }}"
+  data-edited-score="{{ clip.edited_score if clip.edited_score is not none else '' }}"
+  data-generated-score="{{ clip.generated_score if clip.generated_score is not none else clip.score }}"
+  data-score-delta="{{ clip.score_delta if clip.score_delta is not none else '' }}"
+  data-fair-delta="{{ clip.fair_delta if clip.fair_delta is not none else '' }}"
   data-src="/api/matches/{{ match.id }}/clips/{{ clip.id }}"
 >
   <div class="clip-media">
@@ -134,6 +139,9 @@
     {% elif clip.source == 'recovered' %}
     <span class="clip-source recovered">Recuperado</span>
     {% endif %}
+    {% if clip.edited %}
+    <span class="clip-edit-badge" title="Corte editado manualmente">✎ Editado</span>
+    {% endif %}
     {% set start_m = clip.start|int // 60 %}
     {% set start_s = clip.start|int % 60 %}
     {% set end_m = clip.end|int // 60 %}
@@ -153,6 +161,7 @@
       data-starred="{{ 1 if clip.starred else 0 }}"
       title="{{ 'Remover estrela' if clip.starred else ('Marcar excelente e salvar' if not saved else 'Marcar como excelente') }}"
     >{% if clip.starred %}&#9733;{% else %}&#9734;{% endif %}</button>
+    <button class="button secondary small" type="button" data-edit-clip title="Editar início/fim">✎</button>
     {% if saved %}
     <span class="badge done small">Salvo</span>
     <button class="button secondary small" type="button" data-move-new>Voltar</button>
@@ -329,13 +338,15 @@
       <video id="clip-video" controls playsinline></video>
       <div class="actions">
         <button id="seek-original" class="button secondary small" type="button">Ver no vídeo original</button>
+        <button id="edit-clip" class="button secondary small" type="button">Editar corte</button>
         <button id="star-clip" class="button star small" type="button">&#9734; Destacar</button>
         <button id="save-clip" class="button primary small" type="button">Salvar clipe</button>
         <button id="move-clip-new" class="button secondary small" type="button" hidden>Voltar para não verificados</button>
         <button id="delete-clip" class="button ghost small" type="button">Excluir clipe</button>
       </div>
+      <p id="clip-edit-note" class="muted small" hidden></p>
       <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
-      <p class="muted small">Atalhos: S salvar · D excluir · ←/→ navegar · Espaço play/pause</p>
+      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ navegar · Espaço play/pause</p>
     </div>
   </div>
 
@@ -438,6 +449,52 @@
   <p class="empty">Nenhum evento. Processe o vídeo para gerar toques provisórios ou adicione manualmente.</p>
   {% endif %}
 </section>
+
+  <div id="edit-modal" class="modal" hidden>
+    <div class="modal-box edit-box">
+      <div class="card-head">
+        <strong>Editar corte</strong>
+        <button id="close-edit" class="button ghost small" type="button">Fechar</button>
+      </div>
+      <video id="edit-video" controls playsinline preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
+      <p id="edit-info" class="muted small"></p>
+      <div class="edit-grid">
+        <label>Início (s)
+          <input id="edit-start" type="number" min="0" step="0.1">
+        </label>
+        <label>Fim (s)
+          <input id="edit-end" type="number" min="0" step="0.1">
+        </label>
+      </div>
+      <div class="edit-nudges">
+        <span class="muted small">Início:</span>
+        <button class="button ghost small" type="button" data-edit-nudge="start" data-delta="-2">-2s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="start" data-delta="-1">-1s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="start" data-delta="-0.5">-0.5s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="start" data-delta="0.5">+0.5s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="start" data-delta="1">+1s</button>
+        <span class="muted small">Fim:</span>
+        <button class="button ghost small" type="button" data-edit-nudge="end" data-delta="-1">-1s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="end" data-delta="-0.5">-0.5s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="end" data-delta="0.5">+0.5s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="end" data-delta="1">+1s</button>
+        <button class="button ghost small" type="button" data-edit-nudge="end" data-delta="2">+2s</button>
+      </div>
+      <div class="edit-actions">
+        <button id="edit-use-start" class="button secondary small" type="button">Usar tempo atual como início</button>
+        <button id="edit-use-end" class="button secondary small" type="button">Usar tempo atual como fim</button>
+        <button id="edit-preview" class="button ghost small" type="button">Pré-visualizar</button>
+      </div>
+      <p id="edit-range" class="muted small"></p>
+      <label class="check-line"><input id="edit-save" type="checkbox" checked> Salvar como clipe bom após editar</label>
+      <div class="actions">
+        <button id="edit-submit" class="button primary" type="button">Salvar edição</button>
+        <button id="edit-cancel" class="button ghost" type="button">Cancelar</button>
+      </div>
+      <p id="edit-status" class="muted small"></p>
+    </div>
+  </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -673,11 +730,27 @@ const newPanel = document.getElementById('clips-new');
 const savedPanel = document.getElementById('clips-saved');
 const autoAdvanceToggle = document.getElementById('auto-advance');
 const clipSortSelect = document.getElementById('clip-sort');
+const editModal = document.getElementById('edit-modal');
+const editVideo = document.getElementById('edit-video');
+const editStartInput = document.getElementById('edit-start');
+const editEndInput = document.getElementById('edit-end');
+const editInfo = document.getElementById('edit-info');
+const editRange = document.getElementById('edit-range');
+const editSave = document.getElementById('edit-save');
+const editSubmit = document.getElementById('edit-submit');
+const editStatus = document.getElementById('edit-status');
+const editPreviewButton = document.getElementById('edit-preview');
+const clipEditNote = document.getElementById('clip-edit-note');
 let currentClipId = null;
 let currentClipStatus = null;
 let currentClipStarred = false;
 let currentClipStart = null;
 let currentClipCard = null;
+let editCard = null;
+let editClipId = null;
+let editOldStart = null;
+let editOldEnd = null;
+let editPreviewStop = null;
 
 if (autoAdvanceToggle) {
   autoAdvanceToggle.checked = localStorage.getItem('vt-auto-advance') !== '0';
@@ -828,6 +901,25 @@ function nextCardAfter(card) {
   return cards[index + 1] || cards[index - 1] || null;
 }
 
+function updateEditNote(card) {
+  if (!clipEditNote) return;
+  if (card.dataset.edited === '1') {
+    const generated = parseFloat(card.dataset.generatedScore || card.dataset.score || '0');
+    const edited = parseFloat(card.dataset.editedScore || '0');
+    const fair = card.dataset.fairDelta;
+    let text = `Score gerado ${generated.toFixed(1)} · editado ${edited.toFixed(1)}`;
+    if (fair !== '' && !Number.isNaN(Number(fair))) {
+      const value = Number(fair);
+      text += ` (${value >= 0 ? '+' : ''}${value.toFixed(1)} no corte)`;
+    }
+    clipEditNote.hidden = false;
+    clipEditNote.textContent = text;
+  } else {
+    clipEditNote.hidden = true;
+    clipEditNote.textContent = '';
+  }
+}
+
 function openClip(card) {
   currentClipCard = card;
   currentClipId = card.dataset.clipId;
@@ -840,6 +932,7 @@ function openClip(card) {
   moveClipNewButton.hidden = currentClipStatus !== 'saved';
   starClipButton.textContent = currentClipStarred ? '\u2605 Favorito' : '\u2606 Destacar';
   starClipButton.classList.toggle('active', currentClipStarred);
+  updateEditNote(card);
   clipModal.hidden = false;
   clipVideo.play().catch(() => {});
 }
@@ -869,6 +962,160 @@ function openAdjacent(offset) {
   const index = cards.indexOf(currentClipCard);
   const target = cards[index + offset];
   if (target) openClip(target);
+}
+
+function updateEditRange() {
+  if (!editStartInput || !editEndInput || !editRange) return;
+  const start = parseFloat(editStartInput.value);
+  const end = parseFloat(editEndInput.value);
+  const valid = !Number.isNaN(start) && !Number.isNaN(end) && start >= 0 && end > start && end - start >= 1 && end - start <= 180;
+  editRange.textContent = valid
+    ? `Início ${formatClock(start)} · Fim ${formatClock(end)} · ${(end - start).toFixed(1)}s`
+    : 'Marque pelo menos 1 segundo e no máximo 3 minutos.';
+  if (editSubmit) editSubmit.disabled = !valid;
+}
+
+function openEdit(card) {
+  if (!card) return;
+  editCard = card;
+  editClipId = card.dataset.clipId;
+  editOldStart = parseFloat(card.dataset.clipStart || '0');
+  editOldEnd = parseFloat(card.dataset.clipEnd || '0');
+  editStartInput.value = editOldStart.toFixed(2);
+  editEndInput.value = editOldEnd.toFixed(2);
+  const generated = Number(card.dataset.generatedScore || card.dataset.score || 0);
+  editInfo.textContent = `Score gerado: ${generated.toFixed(1)} · corte atual ${formatClock(editOldStart)}-${formatClock(editOldEnd)}`;
+  editSave.checked = true;
+  editSave.disabled = card.dataset.clipStatus === 'saved';
+  editStatus.textContent = '';
+  editPreviewStop = null;
+  updateEditRange();
+  if (!clipModal.hidden) closeClip();
+  if (player) player.pause();
+  editModal.hidden = false;
+  const apply = () => { editVideo.currentTime = editOldStart; };
+  if (editVideo.readyState >= 1) apply();
+  else editVideo.addEventListener('loadedmetadata', apply, { once: true });
+  editStartInput.focus();
+}
+
+function closeEdit() {
+  editModal.hidden = true;
+  editVideo.pause();
+  editPreviewStop = null;
+  editCard = null;
+  editClipId = null;
+  editOldStart = null;
+  editOldEnd = null;
+}
+
+function nudgeEdit(field, delta) {
+  let start = parseFloat(editStartInput.value) || 0;
+  let end = parseFloat(editEndInput.value) || 0;
+  if (field === 'start') start = Math.max(0, start + delta);
+  else end = Math.max(0, end + delta);
+  if (end - start < 1) {
+    if (field === 'start') start = Math.max(0, end - 1);
+    else end = start + 1;
+  }
+  editStartInput.value = start.toFixed(1);
+  editEndInput.value = end.toFixed(1);
+  updateEditRange();
+}
+
+async function submitEdit() {
+  if (!editClipId || !editCard) return;
+  const start = parseFloat(editStartInput.value);
+  const end = parseFloat(editEndInput.value);
+  if (!(end > start) || end - start < 1 || end - start > 180) {
+    editStatus.textContent = 'Ajuste o início e o fim antes de salvar.';
+    return;
+  }
+  editSubmit.disabled = true;
+  editSubmit.textContent = 'Salvando...';
+  editStatus.textContent = 'Recortando o vídeo e recalculando o score...';
+  const response = await fetch(`/api/matches/${matchId}/clips/${editClipId}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start, end, save: editSave.checked })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    editStatus.textContent = data.detail || 'Não foi possível salvar a edição.';
+    editSubmit.disabled = false;
+    editSubmit.textContent = 'Salvar edição';
+    return;
+  }
+  applyEditResult(data);
+  editSubmit.disabled = false;
+  editSubmit.textContent = 'Salvar edição';
+}
+
+function applyEditResult(data) {
+  const card = editCard;
+  if (!card || !data.clip) {
+    closeEdit();
+    return;
+  }
+  const clip = data.clip;
+  const wasSaved = card.dataset.clipStatus === 'saved';
+  const visibleScore = clip.status === 'saved' && clip.saved_score !== null ? clip.saved_score : clip.score;
+  card.dataset.clipStart = clip.start;
+  card.dataset.clipEnd = clip.end;
+  card.dataset.score = clip.score;
+  card.dataset.savedScore = clip.saved_score ?? '';
+  card.dataset.edited = '1';
+  card.dataset.editedScore = data.scores.edited_quality;
+  card.dataset.generatedScore = data.scores.generated;
+  card.dataset.scoreDelta = data.scores.visible_delta;
+  card.dataset.fairDelta = data.scores.fair_delta;
+  card.dataset.uncertainty = Math.abs(Number(visibleScore) - 50) / 50;
+  card.dataset.src = `/api/matches/${matchId}/clips/${clip.id}?v=${Date.now()}`;
+  const timeButton = card.querySelector('.clip-time');
+  if (timeButton) {
+    timeButton.textContent = `${formatClock(clip.start)} - ${formatClock(clip.end)}`;
+    timeButton.dataset.seekOriginal = clip.start;
+  }
+  const scoreElement = card.querySelector('.clip-score');
+  if (scoreElement) scoreElement.textContent = Math.round(Number(visibleScore));
+  const image = card.querySelector('.clip-open img');
+  if (image) {
+    image.src = `/api/matches/${matchId}/clips/${clip.id}/thumb?v=${Date.now()}`;
+  } else {
+    const openButton = card.querySelector('.clip-open');
+    if (openButton) {
+      const placeholder = openButton.querySelector('.clip-placeholder');
+      if (placeholder) placeholder.remove();
+      const newImage = document.createElement('img');
+      newImage.alt = `Clipe em ${clip.start}s`;
+      newImage.loading = 'lazy';
+      newImage.src = `/api/matches/${matchId}/clips/${clip.id}/thumb?v=${Date.now()}`;
+      openButton.appendChild(newImage);
+    }
+  }
+  if (!card.querySelector('.clip-edit-badge')) {
+    const badge = document.createElement('span');
+    badge.className = 'clip-edit-badge';
+    badge.title = 'Corte editado manualmente';
+    badge.textContent = '✎ Editado';
+    const media = card.querySelector('.clip-media');
+    if (media) media.appendChild(badge);
+  }
+  if (clip.status === 'saved' && !wasSaved) moveCard(card, 'saved');
+  else card.dataset.clipStatus = clip.status;
+  closeEdit();
+  openClip(card);
+  if (clipEditNote) {
+    const fair = Number(data.scores.fair_delta);
+    const visible = Number(data.scores.visible_delta);
+    clipEditNote.hidden = false;
+    clipEditNote.textContent =
+      `Score gerado ${Number(data.scores.generated).toFixed(1)} · ` +
+      `original ${Number(data.scores.original_quality).toFixed(1)} · ` +
+      `editado ${Number(data.scores.edited_quality).toFixed(1)} ` +
+      `(${fair >= 0 ? '+' : ''}${fair.toFixed(1)} no corte; ` +
+      `${visible >= 0 ? '+' : ''}${visible.toFixed(1)} vs score gerado).`;
+  }
 }
 
 async function changeStatus(card, status) {
@@ -1024,6 +1271,50 @@ document.querySelectorAll('[data-star-clip]').forEach((button) => {
     handleStar(card, card.dataset.clipStarred !== '1');
   });
 });
+document.querySelectorAll('[data-edit-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openEdit(button.closest('.clip-card'));
+  });
+});
+document.getElementById('edit-clip').addEventListener('click', () => {
+  if (currentClipCard) openEdit(currentClipCard);
+});
+document.getElementById('close-edit').addEventListener('click', closeEdit);
+document.getElementById('edit-cancel').addEventListener('click', closeEdit);
+editModal.addEventListener('click', (event) => {
+  if (event.target === editModal) closeEdit();
+});
+editSubmit.addEventListener('click', submitEdit);
+editPreviewButton.addEventListener('click', () => {
+  const start = parseFloat(editStartInput.value);
+  const end = parseFloat(editEndInput.value);
+  if (!(end > start)) return;
+  editPreviewStop = end;
+  editVideo.currentTime = start;
+  editVideo.play().catch(() => {});
+});
+document.getElementById('edit-use-start').addEventListener('click', () => {
+  editStartInput.value = editVideo.currentTime.toFixed(2);
+  updateEditRange();
+});
+document.getElementById('edit-use-end').addEventListener('click', () => {
+  editEndInput.value = editVideo.currentTime.toFixed(2);
+  updateEditRange();
+});
+editStartInput.addEventListener('input', updateEditRange);
+editEndInput.addEventListener('input', updateEditRange);
+document.querySelectorAll('[data-edit-nudge]').forEach((button) => {
+  button.addEventListener('click', () => {
+    nudgeEdit(button.dataset.editNudge, parseFloat(button.dataset.delta));
+  });
+});
+editVideo.addEventListener('timeupdate', () => {
+  if (editPreviewStop !== null && editVideo.currentTime >= editPreviewStop) {
+    editVideo.pause();
+    editPreviewStop = null;
+  }
+});
 
 rejectReason.addEventListener('change', updateRejectDetail);
 document.getElementById('close-reject').addEventListener('click', closeReject);
@@ -1106,6 +1397,10 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeReject();
     return;
   }
+  if (!editModal.hidden) {
+    if (event.key === 'Escape') closeEdit();
+    return;
+  }
   if (isTypingTarget(event.target)) return;
   if (clipModal.hidden) return;
   if (event.key === 'Escape') {
@@ -1113,7 +1408,10 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   const key = event.key.toLowerCase();
-  if (key === 's') {
+  if (key === 'e') {
+    event.preventDefault();
+    if (currentClipCard) openEdit(currentClipCard);
+  } else if (key === 's') {
     event.preventDefault();
     if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true);
   } else if (key === 'd') {

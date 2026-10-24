@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Aprendizado · VolleyTrak{% endblock %}
 {% block content %}
+{% macro clock(value) %}{{ '%d:%02d'|format(value|int // 60, value|int % 60) }}{% endmacro %}
 <div class="page-head">
   <div>
     <h1>Aprendizado</h1>
@@ -67,6 +68,61 @@
     </p>
   </section>
 </div>
+
+<section class="card">
+  <h2>Edições manuais</h2>
+  {% if edit_stats.total %}
+  <div class="stats">
+    <div><span class="stat-value">{{ edit_stats.total }}</span><span class="stat-label">edições</span></div>
+    <div><span class="stat-value">{{ edit_stats.improved }}</span><span class="stat-label">melhoraram</span></div>
+    <div><span class="stat-value">{% if edit_stats.avg_delta is not none %}{{ '%+.1f'|format(edit_stats.avg_delta) }}{% else %}—{% endif %}</span><span class="stat-label">Δ médio de qualidade</span></div>
+    <div><span class="stat-value">{% if edit_stats.avg_start_delta is not none %}{{ '%+.1f'|format(edit_stats.avg_start_delta) }}s / {{ '%+.1f'|format(edit_stats.avg_end_delta) }}s{% else %}—{% endif %}</span><span class="stat-label">início / fim</span></div>
+  </div>
+  <p class="muted small">
+    Qualidade média do corte: original {% if edit_stats.avg_old_score is not none %}{{ '%.1f'|format(edit_stats.avg_old_score) }}{% else %}—{% endif %}
+    → editada {% if edit_stats.avg_new_score is not none %}{{ '%.1f'|format(edit_stats.avg_new_score) }}{% else %}—{% endif %}.
+    O score gerado é o candidato; a qualidade original/editada usa a mesma fórmula para comparar o efeito do ajuste.
+  </p>
+  {% if recent_edits %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Partida</th>
+          <th>Corte anterior</th>
+          <th>Corte editado</th>
+          <th>Score gerado</th>
+          <th>Qualidade original → editada</th>
+          <th>Ajuste</th>
+          <th>Motivo</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recent_edits %}
+        <tr>
+          <td>#{{ row.match_id }}{% if row.match_title %} · {{ row.match_title }}{% endif %}</td>
+          <td>{{ clock(row.old_start) }}–{{ clock(row.old_end) }}</td>
+          <td>{{ clock(row.new_start) }}–{{ clock(row.new_end) }}</td>
+          <td>{{ '%.1f'|format(row.features_data.get('generated_score')) if row.features_data.get('generated_score') is not none else '—' }}</td>
+          <td>
+            {{ '%.1f'|format(row.old_score) if row.old_score is not none else '—' }}
+            → {{ '%.1f'|format(row.new_score) if row.new_score is not none else '—' }}
+            {% if row.score_delta is not none %}({{ '%+.1f'|format(row.score_delta) }}){% endif %}
+          </td>
+          <td>{{ '%+.1f'|format(row.start_delta) }}s / {{ '%+.1f'|format(row.end_delta) }}s</td>
+          <td>{{ row.reason_label }}{% if row.detail_label %} · {{ row.detail_label }}{% endif %}</td>
+          <td>{{ row.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="empty">Nenhuma edição manual ainda. Abra um clipe, use <strong>Editar corte</strong> e salve o ajuste para começar a comparar.</p>
+  {% endif %}
+</section>
 
 <section class="card">
   <h2>Exemplos recentes</h2>

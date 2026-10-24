@@ -628,6 +628,7 @@ video {
 
 .clip-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 7px;
@@ -1074,4 +1075,52 @@ video {
   width: auto;
   min-height: 34px;
   padding: 4px 8px;
+}
+
+.clip-actions .button[data-edit-clip] {
+  flex: 0 0 34px;
+}
+
+.clip-edit-badge {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border: 1px solid rgba(126, 226, 168, 0.55);
+  border-radius: 999px;
+  background: rgba(5, 10, 15, 0.82);
+  color: #7ee2a8;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.edit-box {
+  width: min(900px, 96vw);
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.edit-nudges,
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.edit-nudges .button,
+.edit-actions .button {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
 }

@@ -1,6 +1,6 @@
 #define Root "D:\volleytrak"
 #define AppName "VolleyTrak"
-#define AppVersion "0.3.5"
+#define AppVersion "0.3.6"
 #define AppPublisher "VolleyTrak Local"
 
 [Setup]
@@ -28,7 +28,7 @@ SetupLogging=yes
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na Ãrea de Trabalho"; GroupDescription: "Atalhos:"
+Name: "desktopicon"; Description: "Criar atalho na ÃƒÂrea de Trabalho"; GroupDescription: "Atalhos:"
 
 [Files]
 Source: "{#Root}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs

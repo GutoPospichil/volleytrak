@@ -105,6 +105,30 @@ CREATE TABLE IF NOT EXISTS learning_examples (
 
 CREATE INDEX IF NOT EXISTS idx_learning_examples_label
     ON learning_examples(label);
+
+CREATE TABLE IF NOT EXISTS clip_edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    clip_id INTEGER NOT NULL,
+    old_start REAL NOT NULL,
+    old_end REAL NOT NULL,
+    new_start REAL NOT NULL,
+    new_end REAL NOT NULL,
+    old_duration REAL NOT NULL,
+    new_duration REAL NOT NULL,
+    old_score REAL,
+    new_score REAL,
+    score_delta REAL,
+    start_delta REAL,
+    end_delta REAL,
+    reason TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    features TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_clip_edits_match
+    ON clip_edits(match_id, created_at);
 """
 
 MATCH_FIELDS = {
@@ -341,6 +365,162 @@ def backfill_learning_examples() -> int:
             )
             total += 1
         return total
+
+
+def update_clip_bounds(
+    clip_id: int,
+    start: float,
+    end: float,
+    duration: float,
+    path: str,
+    thumb: str | None,
+    features: dict[str, Any] | None,
+    status: str,
+    saved_score: float | None = None,
+) -> None:
+    if status not in {"new", "saved"}:
+        raise ValueError("status de clipe inválido")
+    payload = json.dumps(features, ensure_ascii=False) if features is not None else None
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE clips
+            SET start = ?,
+                end = ?,
+                duration = ?,
+                path = ?,
+                thumb = ?,
+                features = ?,
+                status = ?,
+                saved_score = ?,
+                saved_at = CASE
+                    WHEN ? = 'saved' THEN COALESCE(saved_at, datetime('now'))
+                    ELSE NULL
+                END
+            WHERE id = ?
+            """,
+            (
+                start,
+                end,
+                duration,
+                path,
+                thumb,
+                payload,
+                status,
+                saved_score,
+                status,
+                clip_id,
+            ),
+        )
+
+
+def add_clip_edit(
+    match_id: int,
+    clip_id: int,
+    old_start: float,
+    old_end: float,
+    new_start: float,
+    new_end: float,
+    old_score: float | None,
+    new_score: float | None,
+    score_delta: float | None,
+    start_delta: float,
+    end_delta: float,
+    reason: str = "",
+    detail: str = "",
+    features: dict[str, Any] | None = None,
+) -> int:
+    old_duration = round(float(old_end) - float(old_start), 2)
+    new_duration = round(float(new_end) - float(new_start), 2)
+    payload = json.dumps(features, ensure_ascii=False) if features is not None else None
+    with db() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO clip_edits
+                (match_id, clip_id, old_start, old_end, new_start, new_end,
+                 old_duration, new_duration, old_score, new_score, score_delta,
+                 start_delta, end_delta, reason, detail, features)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                match_id,
+                clip_id,
+                round(float(old_start), 2),
+                round(float(old_end), 2),
+                round(float(new_start), 2),
+                round(float(new_end), 2),
+                old_duration,
+                new_duration,
+                old_score,
+                new_score,
+                score_delta,
+                round(float(start_delta), 2),
+                round(float(end_delta), 2),
+                reason,
+                detail,
+                payload,
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def list_clip_edits(match_id: int | None = None) -> list[sqlite3.Row]:
+    with db() as conn:
+        if match_id is not None:
+            return conn.execute(
+                "SELECT * FROM clip_edits WHERE match_id = ? ORDER BY created_at, id",
+                (match_id,),
+            ).fetchall()
+        return conn.execute(
+            "SELECT * FROM clip_edits ORDER BY created_at, id"
+        ).fetchall()
+
+
+def list_recent_clip_edits(limit: int = 12) -> list[sqlite3.Row]:
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT ce.*, m.title AS match_title
+            FROM clip_edits ce
+            LEFT JOIN matches m ON m.id = ce.match_id
+            ORDER BY ce.created_at DESC, ce.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+
+def clip_edit_stats() -> dict:
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN score_delta > 0.05 THEN 1 ELSE 0 END) AS improved,
+                SUM(CASE WHEN score_delta < -0.05 THEN 1 ELSE 0 END) AS worsened,
+                SUM(CASE WHEN ABS(score_delta) <= 0.05 THEN 1 ELSE 0 END) AS unchanged,
+                AVG(score_delta) AS avg_delta,
+                AVG(start_delta) AS avg_start_delta,
+                AVG(end_delta) AS avg_end_delta,
+                AVG(old_score) AS avg_old_score,
+                AVG(new_score) AS avg_new_score
+            FROM clip_edits
+            """
+        ).fetchone()
+    def value(key: str):
+        raw = row[key] if row else None
+        return round(float(raw), 2) if raw is not None else None
+    return {
+        "total": int(row["total"]) if row else 0,
+        "improved": int(row["improved"] or 0) if row else 0,
+        "worsened": int(row["worsened"] or 0) if row else 0,
+        "unchanged": int(row["unchanged"] or 0) if row else 0,
+        "avg_delta": value("avg_delta"),
+        "avg_start_delta": value("avg_start_delta"),
+        "avg_end_delta": value("avg_end_delta"),
+        "avg_old_score": value("avg_old_score"),
+        "avg_new_score": value("avg_new_score"),
+    }
 
 
 def learning_stats() -> dict:

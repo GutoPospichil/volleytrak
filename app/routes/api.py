@@ -8,10 +8,11 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from ..config import (
@@ -27,6 +28,7 @@ from collections import Counter
 from ..constants import learning_example_weight
 from ..db import (
     add_clip,
+    add_clip_edit,
     add_clip_rejection,
     add_event,
     add_player,
@@ -49,11 +51,13 @@ from ..db import (
     remove_learning_example,
     set_clip_starred,
     set_clip_status,
+    update_clip_bounds,
     update_match,
     upsert_learning_example,
 )
 from ..schemas import (
     CalibrationIn,
+    ClipEditIn,
     ClipRejectIn,
     ClipStarIn,
     ClipStatusIn,
@@ -340,7 +344,9 @@ def get_clip_video(match_id: int, clip_id: int):
     path = Path(clip["path"])
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Arquivo do clipe não encontrado")
-    return FileResponse(path, media_type="video/mp4")
+    return FileResponse(
+        path, media_type="video/mp4", headers={"Cache-Control": "no-store"}
+    )
 
 
 @router.get("/matches/{match_id}/clips/{clip_id}/thumb")
@@ -351,7 +357,9 @@ def get_clip_thumb(match_id: int, clip_id: int):
     path = Path(clip["thumb"])
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Miniatura não encontrada")
-    return FileResponse(path, media_type="image/jpeg")
+    return FileResponse(
+        path, media_type="image/jpeg", headers={"Cache-Control": "no-store"}
+    )
 
 
 @router.post("/matches/{match_id}/clips/manual")
@@ -436,6 +444,198 @@ def create_manual_clip(match_id: int, payload: ManualClipIn):
         "start": start,
         "end": end,
         "duration": duration,
+    }
+
+
+@router.post("/matches/{match_id}/clips/{clip_id}/edit")
+def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
+    row = _require_match(match_id)
+    if row["status"] == "processing":
+        raise HTTPException(
+            status_code=409, detail="Aguarde o processamento terminar para editar o clipe"
+        )
+    clip = get_clip(clip_id)
+    if clip is None or clip["match_id"] != match_id:
+        raise HTTPException(status_code=404, detail="Clipe não encontrado")
+    video_path = Path(row["video_path"])
+    if not video_path.is_file():
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo não encontrado")
+
+    old_start = round(float(clip["start"]), 2)
+    old_end = round(float(clip["end"]), 2)
+    new_start = round(float(payload.start), 2)
+    new_end = round(float(payload.end), 2)
+    if new_end <= new_start:
+        raise HTTPException(status_code=400, detail="Fim deve ser maior que o início")
+    duration = round(new_end - new_start, 2)
+    if duration < 1.0 or duration > 180.0:
+        raise HTTPException(
+            status_code=400, detail="O clipe precisa ter entre 1 segundo e 3 minutos"
+        )
+    start_delta = round(new_start - old_start, 2)
+    end_delta = round(new_end - old_end, 2)
+    if abs(start_delta) < 0.01 and abs(end_delta) < 0.01:
+        raise HTTPException(status_code=400, detail="O corte não mudou")
+
+    if start_delta < -0.25 and end_delta > 0.25:
+        detail = "both"
+        reason = "bad_cut"
+    elif start_delta < -0.25:
+        detail = "start_late"
+        reason = "bad_cut"
+    elif end_delta > 0.25:
+        detail = "end_early"
+        reason = "bad_cut"
+    elif start_delta > 0.25 or end_delta < -0.25:
+        detail = ""
+        reason = "dead_time"
+    else:
+        detail = ""
+        reason = "other"
+
+    job_dir = JOB_DIR / f"match-{match_id}"
+    clips_dir = job_dir / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    token = uuid4().hex[:10]
+    new_path = clips_dir / f"edited-{token}.mp4"
+    new_thumb = clips_dir / f"edited-{token}.jpg"
+
+    from pipeline.clip_score import load_json, load_jsonl, score_clip
+    from pipeline.clips import cut_clip, make_thumb
+
+    if not cut_clip(video_path, new_start, new_end, new_path):
+        raise HTTPException(status_code=500, detail="Não foi possível recortar o clipe")
+    thumb_seek = min(6.0, max(1.5, duration * 0.35))
+    make_thumb(new_path, new_thumb, seek=thumb_seek)
+
+    ball_path = job_dir / "ball_vballnet.jsonl"
+    if not ball_path.is_file():
+        ball_path = job_dir / "ball_dfine.jsonl"
+    records = load_jsonl(ball_path, [])
+    contacts = [
+        float(item.get("t", 0.0))
+        for item in load_json(job_dir / "contacts.json", [])
+    ]
+    rallies = load_json(job_dir / "rallies_audio.json", [])
+    generated_score = float(clip["score"] or 0.0)
+
+    def interval_quality(start: float, end: float):
+        candidate = {
+            "start": start,
+            "end": end,
+            "duration": round(end - start, 2),
+            "score": generated_score,
+            "source": clip["source"] or "speed",
+            "starred": bool(clip["starred"]),
+            "features": None,
+        }
+        return score_clip(candidate, records, contacts, rallies)
+
+    original_quality, original_features = interval_quality(old_start, old_end)
+    edited_quality, edited_features = interval_quality(new_start, new_end)
+    fair_delta = round(float(edited_quality) - float(original_quality), 1)
+    visible_delta = round(float(edited_quality) - generated_score, 1)
+    edited_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    edited_features.update(
+        {
+            "edited": True,
+            "edited_score": edited_quality,
+            "generated_score": generated_score,
+            "original_quality": original_quality,
+            "fair_delta": fair_delta,
+            "score_delta": visible_delta,
+            "original_start": old_start,
+            "original_end": old_end,
+            "start_delta": start_delta,
+            "end_delta": end_delta,
+            "edit_reason": reason,
+            "edit_detail": detail,
+            "edited_at": edited_at,
+        }
+    )
+    original_features.update(
+        {
+            "generated_score": generated_score,
+            "original_quality": original_quality,
+            "edited_score": edited_quality,
+            "fair_delta": fair_delta,
+            "visible_delta": visible_delta,
+        }
+    )
+
+    status = "saved" if payload.save or clip["status"] == "saved" else "new"
+    saved_score = float(edited_quality) if status == "saved" else None
+    old_path = Path(clip["path"])
+    old_thumb = Path(clip["thumb"]) if clip["thumb"] else None
+
+    update_clip_bounds(
+        clip_id,
+        new_start,
+        new_end,
+        duration,
+        str(new_path),
+        str(new_thumb) if new_thumb.is_file() else None,
+        edited_features,
+        status,
+        saved_score,
+    )
+    add_clip_edit(
+        match_id,
+        clip_id,
+        old_start,
+        old_end,
+        new_start,
+        new_end,
+        float(original_quality),
+        float(edited_quality),
+        fair_delta,
+        start_delta,
+        end_delta,
+        reason=reason,
+        detail=detail,
+        features=original_features,
+    )
+    remove_learning_example(match_id, old_start, old_end)
+    upsert_learning_example(
+        match_id,
+        new_start,
+        new_end,
+        "good",
+        note="edição manual",
+        source=clip["source"] or "edit",
+        features=edited_features,
+        weight=1.5,
+    )
+    build_profile_for_match(match_id)
+    _invalidate_highlight(match_id)
+
+    if old_path != new_path:
+        try:
+            old_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    if old_thumb and old_thumb != new_thumb:
+        try:
+            old_thumb.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    updated = get_clip(clip_id)
+    return {
+        "ok": True,
+        "clip": dict(updated) if updated is not None else None,
+        "old": {"start": old_start, "end": old_end},
+        "new": {"start": new_start, "end": new_end},
+        "scores": {
+            "generated": generated_score,
+            "original_quality": float(original_quality),
+            "edited_quality": float(edited_quality),
+            "visible_delta": visible_delta,
+            "fair_delta": fair_delta,
+        },
+        "reason": reason,
+        "detail": detail,
     }
 
 
