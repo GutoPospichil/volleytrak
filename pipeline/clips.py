@@ -21,7 +21,7 @@ from app.db import (
     list_clips,
 )
 from pipeline.clips_core import select_balls, windows_from_ball
-from pipeline.feedback import build_profile_for_match
+from pipeline.feedback import build_global_profile, build_profile_for_match
 from pipeline.ranker import feature_vector, predict_probability, train_and_save
 
 
@@ -560,6 +560,7 @@ def main() -> int:
         mode, 9.0
     )
     print(f"modo={mode} net_x={net_x} min_y={min_y}")
+    build_global_profile()
     feedback_profile = build_profile_for_match(args.match_id)
     trim_profile = feedback_profile.get("trim", {})
     min_ball_pct = float(feedback_profile.get("min_ball_pct", 0.10))

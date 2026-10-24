@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Aprendizado · VolleyTrak{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Aprendizado</h1>
+    <p class="muted">Banco local de exemplos revisados: cada clipe salvo ou excluído vira uma linha com características, rótulo e peso.</p>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/api/learning/export?format=csv">Baixar CSV</a>
+    <a class="button secondary" href="/api/learning/export?format=json">Baixar JSON</a>
+    <button id="train-learning" class="button secondary" type="button">Atualizar modelos agora</button>
+  </div>
+</div>
+
+<section class="card">
+  <div class="stats">
+    <div><span class="stat-value">{{ stats.total }}</span><span class="stat-label">exemplos</span></div>
+    <div><span class="stat-value">{{ stats.good }}</span><span class="stat-label">bons / salvos</span></div>
+    <div><span class="stat-value">{{ stats.bad }}</span><span class="stat-label">ruins / excluídos</span></div>
+    <div><span class="stat-value">{{ stats.matches }}</span><span class="stat-label">partidas</span></div>
+  </div>
+  <p class="muted small">
+    {% if stats.last_updated %}Última atualização: {{ stats.last_updated }}.{% endif %}
+    Estrelas contam com peso 2. Duplicados pesam menos; tempo morto e fora de rally pesam mais.
+  </p>
+  <p id="learning-status" class="muted small"></p>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>O que o banco guarda</h2>
+    <p class="muted small">
+      Uma linha por trecho revisado, com <strong>label</strong> (bom/ruim), motivo, detalhe, observação,
+      features de bola/contatos/áudio e peso. O ranker treina com essa tabela e o perfil aprendido usa
+      os motivos e as características dos exemplos.
+    </p>
+    <p class="muted small">
+      O CSV é a forma mais fácil de juntar o aprendizado de vários testadores. O arquivo não inclui vídeos,
+      apenas metadados e features dos clipes.
+    </p>
+    {% if stats.reasons %}
+    <h3>Motivos das exclusões</h3>
+    <div class="feedback-chips">
+      {% for reason, count in stats.reasons.items() %}
+      <span class="badge manual">{{ rejection_labels.get(reason, reason) }}: {{ count }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Modelo atual</h2>
+    {% if ranker_info and ranker_info.get("cv_auc") %}
+    <p class="ok small">Ranker treinado com AUC {{ "%.3f"|format(ranker_info.get("cv_auc")) }}.</p>
+    <p class="muted small">
+      {{ ranker_info.get("n_examples", ranker_info.get("n_positive", 0) + ranker_info.get("n_negative", 0)) }} exemplos ·
+      {{ ranker_info.get("n_positive", 0) }} positivos ·
+      {{ ranker_info.get("n_negative", 0) }} negativos.
+    </p>
+    {% else %}
+    <p class="muted small">Ainda não há ranker treinado com AUC suficiente. Revise mais clipes ou use <strong>Atualizar modelos agora</strong>.</p>
+    {% endif %}
+    <p class="muted small">
+      Próximo passo possível: aprendizado ativo. Em vez de revisar todos os clipes, o app pode
+      priorizar os que o modelo considera incertos e deixar os óbvios para uma triagem automática.
+    </p>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Exemplos recentes</h2>
+  {% if recent %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Partida</th>
+          <th>Trecho</th>
+          <th>Label</th>
+          <th>Motivo</th>
+          <th>Score</th>
+          <th>Peso</th>
+          <th>Atualizado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recent %}
+        <tr>
+          <td>#{{ row.match_id }}{% if row.match_title %} · {{ row.match_title }}{% endif %}</td>
+          <td>{{ '%d:%02d'|format(row.start|int // 60, row.start|int % 60) }}–{{ '%d:%02d'|format(row.end|int // 60, row.end|int % 60) }}</td>
+          <td><span class="badge {{ 'done' if row.label == 'good' else 'manual' }}">{{ 'Bom' if row.label == 'good' else 'Ruim' }}</span></td>
+          <td>{{ row.reason_label if row.label == 'bad' else '—' }}{% if row.detail %} · {{ rejection_details.get(row.detail, row.detail) }}{% endif %}</td>
+          <td>{{ row.features_data.get('score', '—') }}</td>
+          <td>{{ row.weight }}</td>
+          <td>{{ row.updated_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">Nenhum exemplo ainda. Salve ou exclua clipes para começar.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const trainLearning = document.getElementById('train-learning');
+if (trainLearning) {
+  trainLearning.addEventListener('click', async () => {
+    const status = document.getElementById('learning-status');
+    trainLearning.disabled = true;
+    trainLearning.textContent = 'Treinando...';
+    status.textContent = 'Treinando o ranker e recalculando o perfil global...';
+    const response = await fetch('/api/learning/train', { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      status.textContent = data.detail || 'Não foi possível atualizar os modelos.';
+      trainLearning.disabled = false;
+      trainLearning.textContent = 'Atualizar modelos agora';
+      return;
+    }
+    status.textContent = `Modelos atualizados: AUC ${data.cv_auc ?? '—'} com ${data.n_examples ?? 0} exemplos. Perfil global: pré ${data.global_profile?.pre_roll ?? '—'}s / pós ${data.global_profile?.post_roll ?? '—'}s.`;
+    trainLearning.disabled = false;
+    trainLearning.textContent = 'Atualizar modelos agora';
+  });
+}
+</script>
+{% endblock %}

@@ -80,6 +80,7 @@
     {% if ranker_info and ranker_info.get("cv_auc") %}
     <p class="muted small">Ranker global: AUC {{ "%.3f"|format(ranker_info.get("cv_auc")) }} · {{ ranker_info.get("n_positive", 0) }} salvos / {{ ranker_info.get("n_negative", 0) }} excluídos.</p>
     {% endif %}
+    <a class="button ghost small" href="/aprendizado">Ver banco de aprendizado</a>
     {% endif %}
 
     {% if match.result %}
@@ -108,6 +109,9 @@
   data-clip-status="{{ 'saved' if saved else 'new' }}"
   data-clip-starred="{{ 1 if clip.starred else 0 }}"
   data-clip-start="{{ clip.start }}"
+  data-clip-end="{{ clip.end }}"
+  data-score="{{ clip.score }}"
+  data-uncertainty="{{ clip.uncertainty }}"
   data-src="/api/matches/{{ match.id }}/clips/{{ clip.id }}"
 >
   <div class="clip-media">
@@ -169,6 +173,7 @@
     <div class="actions">
       <button id="process-clips" class="button primary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Processar clipes</button>
       <button id="generate-clips" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Gerar novamente (aprendizados)</button>
+      <button id="fast-review" class="button secondary small" type="button" {% if not clips_new %}disabled{% endif %}>Revisão rápida</button>
     </div>
   </div>
   <label class="check-line"><input type="checkbox" id="use-gaps" checked> Reavaliar minutos sem clipes no mapa de calor</label>
@@ -182,6 +187,16 @@
       <li>Minutos sem clipes são reavaliados quando a opção acima está marcada e aparecem como "Lacuna".</li>
     </ul>
   </details>
+  <div class="review-toolbar">
+    <label class="check-line">Ordenar não verificados:
+      <select id="clip-sort">
+        <option value="time">Tempo</option>
+        <option value="uncertain">Mais incertos primeiro</option>
+        <option value="score">Maior score</option>
+      </select>
+    </label>
+    <span class="muted small">Atalhos no player: S salvar · D excluir · ←/→ navegar · Espaço play/pause</span>
+  </div>
 
   {% if timeline %}
   <div class="timeline-card">
@@ -291,7 +306,7 @@
       <button id="score-saved" class="button secondary small" type="button" {% if not clips_saved %}disabled{% endif %}>
         Calcular notas
       </button>
-      <span class="muted small">{{ clips_saved|length }} clipe(s) salvo(s){% if saved_average is not none %} · nota média {{ saved_average }}{% endif %}.</span>
+      <span id="saved-summary" class="muted small">{{ clips_saved|length }} clipe(s) salvo(s){% if saved_average is not none %} · nota média {{ saved_average }}{% endif %}.</span>
       {% if highlight_available %}
       <a class="button ghost small" href="/api/matches/{{ match.id }}/highlight" download>Baixar último highlight</a>
       {% endif %}
@@ -319,6 +334,8 @@
         <button id="move-clip-new" class="button secondary small" type="button" hidden>Voltar para não verificados</button>
         <button id="delete-clip" class="button ghost small" type="button">Excluir clipe</button>
       </div>
+      <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
+      <p class="muted small">Atalhos: S salvar · D excluir · ←/→ navegar · Espaço play/pause</p>
     </div>
   </div>
 
@@ -652,12 +669,167 @@ const saveClipButton = document.getElementById('save-clip');
 const moveClipNewButton = document.getElementById('move-clip-new');
 const starClipButton = document.getElementById('star-clip');
 const seekOriginalButton = document.getElementById('seek-original');
+const newPanel = document.getElementById('clips-new');
+const savedPanel = document.getElementById('clips-saved');
+const autoAdvanceToggle = document.getElementById('auto-advance');
+const clipSortSelect = document.getElementById('clip-sort');
 let currentClipId = null;
 let currentClipStatus = null;
 let currentClipStarred = false;
 let currentClipStart = null;
+let currentClipCard = null;
+
+if (autoAdvanceToggle) {
+  autoAdvanceToggle.checked = localStorage.getItem('vt-auto-advance') !== '0';
+  autoAdvanceToggle.addEventListener('change', () => {
+    localStorage.setItem('vt-auto-advance', autoAdvanceToggle.checked ? '1' : '0');
+  });
+}
+
+function autoAdvanceEnabled() {
+  return !autoAdvanceToggle || autoAdvanceToggle.checked;
+}
+
+function clipCount(panel) {
+  return panel ? panel.querySelectorAll('.clip-card').length : 0;
+}
+
+function ensureGrid(panel) {
+  if (!panel) return null;
+  let grid = panel.querySelector('.clip-grid');
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.className = 'clip-grid';
+    const empty = panel.querySelector('.empty');
+    panel.insertBefore(grid, empty || null);
+  }
+  grid.hidden = false;
+  return grid;
+}
+
+function updateEmptyState(panel, message) {
+  if (!panel) return;
+  const grid = panel.querySelector('.clip-grid');
+  const hasCards = clipCount(panel) > 0;
+  let empty = panel.querySelector('.empty');
+  if (!hasCards) {
+    if (!empty) {
+      empty = document.createElement('p');
+      empty.className = 'empty';
+      panel.appendChild(empty);
+    }
+    empty.textContent = message;
+    if (grid) grid.hidden = true;
+  } else {
+    if (empty) empty.remove();
+    if (grid) grid.hidden = false;
+  }
+}
+
+function updateCounts() {
+  const newCount = clipCount(newPanel);
+  const savedCount = clipCount(savedPanel);
+  const newTab = document.querySelector('.clip-tab[data-tab="new"] .tab-count');
+  const savedTab = document.querySelector('.clip-tab[data-tab="saved"] .tab-count');
+  if (newTab) newTab.textContent = newCount;
+  if (savedTab) savedTab.textContent = savedCount;
+  const summary = document.getElementById('saved-summary');
+  if (summary) summary.textContent = `${savedCount} clipe(s) salvo(s).`;
+  const exportHighlight = document.getElementById('export-highlight');
+  const scoreSaved = document.getElementById('score-saved');
+  if (exportHighlight) exportHighlight.disabled = savedCount === 0;
+  if (scoreSaved) scoreSaved.disabled = savedCount === 0;
+  const fastReview = document.getElementById('fast-review');
+  if (fastReview) fastReview.disabled = newCount === 0;
+}
+
+function refreshActions(card, status) {
+  const actions = card.querySelector('.clip-actions');
+  if (!actions) return;
+  const deleteButton = actions.querySelector('[data-delete-clip]');
+  actions.querySelectorAll('[data-save-clip], [data-move-new], .badge.done').forEach((item) => item.remove());
+  if (status === 'saved') {
+    const badge = document.createElement('span');
+    badge.className = 'badge done small';
+    badge.textContent = 'Salvo';
+    const move = document.createElement('button');
+    move.className = 'button secondary small';
+    move.type = 'button';
+    move.dataset.moveNew = '';
+    move.textContent = 'Voltar';
+    move.addEventListener('click', (event) => {
+      event.stopPropagation();
+      handleMoveNew(card);
+    });
+    actions.insertBefore(move, deleteButton);
+    actions.insertBefore(badge, move);
+  } else {
+    const save = document.createElement('button');
+    save.className = 'button primary small';
+    save.type = 'button';
+    save.dataset.saveClip = '';
+    save.textContent = 'Salvar';
+    save.addEventListener('click', (event) => {
+      event.stopPropagation();
+      handleSave(card);
+    });
+    actions.insertBefore(save, deleteButton);
+  }
+  card.dataset.clipStatus = status;
+}
+
+function moveCard(card, status) {
+  refreshActions(card, status);
+  const targetPanel = status === 'saved' ? savedPanel : newPanel;
+  const grid = ensureGrid(targetPanel);
+  if (grid) grid.appendChild(card);
+  updateEmptyState(newPanel, 'Nenhum clipe não verificado. Gere novos clipes ou use o corte manual.');
+  updateEmptyState(savedPanel, 'Nenhum clipe salvo ainda. Salve os melhores rallies.');
+  updateCounts();
+}
+
+function removeCard(card) {
+  card.remove();
+  updateEmptyState(newPanel, 'Nenhum clipe não verificado. Gere novos clipes ou use o corte manual.');
+  updateEmptyState(savedPanel, 'Nenhum clipe salvo ainda. Salve os melhores rallies.');
+  updateCounts();
+}
+
+function updateStarUi(card, starred) {
+  card.dataset.clipStarred = starred ? '1' : '0';
+  const button = card.querySelector('[data-star-clip]');
+  if (button) {
+    button.dataset.starred = starred ? '1' : '0';
+    button.classList.toggle('active', starred);
+    button.textContent = starred ? '\u2605' : '\u2606';
+    button.title = starred ? 'Remover estrela' : 'Marcar excelente e salvar';
+  }
+  const media = card.querySelector('.clip-media');
+  let badge = card.querySelector('.clip-star-badge');
+  if (starred && !badge && media) {
+    badge = document.createElement('span');
+    badge.className = 'clip-star-badge';
+    badge.title = 'Clipe excelente';
+    badge.innerHTML = '&#9733;';
+    media.appendChild(badge);
+  } else if (!starred && badge) {
+    badge.remove();
+  }
+}
+
+function newCards() {
+  return newPanel ? [...newPanel.querySelectorAll('.clip-card')] : [];
+}
+
+function nextCardAfter(card) {
+  const cards = newCards();
+  const index = cards.indexOf(card);
+  if (index === -1) return cards[0] || null;
+  return cards[index + 1] || cards[index - 1] || null;
+}
 
 function openClip(card) {
+  currentClipCard = card;
   currentClipId = card.dataset.clipId;
   currentClipStatus = card.dataset.clipStatus;
   currentClipStarred = card.dataset.clipStarred === '1';
@@ -672,10 +844,6 @@ function openClip(card) {
   clipVideo.play().catch(() => {});
 }
 
-document.querySelectorAll('[data-open-clip]').forEach((button) => {
-  button.addEventListener('click', () => openClip(button.closest('.clip-card')));
-});
-
 function closeClip() {
   clipModal.hidden = true;
   clipVideo.pause();
@@ -685,10 +853,66 @@ function closeClip() {
   currentClipStatus = null;
   currentClipStarred = false;
   currentClipStart = null;
+  currentClipCard = null;
 }
 
-async function toggleStar(clipId, starred) {
-  const response = await fetch(`/api/clips/${clipId}/star`, {
+function openAdjacent(offset) {
+  const cards = newCards();
+  if (!cards.length) {
+    closeClip();
+    return;
+  }
+  if (!currentClipCard) {
+    openClip(cards[0]);
+    return;
+  }
+  const index = cards.indexOf(currentClipCard);
+  const target = cards[index + offset];
+  if (target) openClip(target);
+}
+
+async function changeStatus(card, status) {
+  const response = await fetch(`/api/clips/${card.dataset.clipId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível atualizar o clipe.');
+    return false;
+  }
+  return true;
+}
+
+async function handleSave(card, fromModal = false) {
+  if (!card || card.dataset.clipStatus === 'saved') return;
+  const next = fromModal ? nextCardAfter(card) : null;
+  if (!(await changeStatus(card, 'saved'))) return;
+  moveCard(card, 'saved');
+  if (fromModal) {
+    if (autoAdvanceEnabled() && next) openClip(next);
+    else closeClip();
+  }
+}
+
+async function handleMoveNew(card, fromModal = false) {
+  if (!card || card.dataset.clipStatus !== 'saved') return;
+  if (!(await changeStatus(card, 'new'))) return;
+  moveCard(card, 'new');
+  if (fromModal) {
+    currentClipStatus = 'new';
+    saveClipButton.hidden = false;
+    moveClipNewButton.hidden = true;
+    clipModalStatus.textContent = '· não verificado';
+  }
+}
+
+async function handleStar(card, starred, fromModal = false) {
+  if (!card) return;
+  const wasNew = card.dataset.clipStatus === 'new';
+  const next = fromModal ? nextCardAfter(card) : null;
+  const response = await fetch(`/api/clips/${card.dataset.clipId}/star`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ starred })
@@ -698,27 +922,21 @@ async function toggleStar(clipId, starred) {
     alert(error.detail || 'Não foi possível atualizar a estrela.');
     return;
   }
-  location.reload();
-}
-
-async function updateClipStatus(clipId, status) {
-  const response = await fetch(`/api/clips/${clipId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    alert(error.detail || 'Não foi possível atualizar o clipe.');
-    return;
+  updateStarUi(card, starred);
+  if (wasNew && starred) moveCard(card, 'saved');
+  if (fromModal) {
+    currentClipStarred = starred;
+    starClipButton.textContent = starred ? '\u2605 Favorito' : '\u2606 Destacar';
+    starClipButton.classList.toggle('active', starred);
+    if (wasNew && starred) {
+      if (autoAdvanceEnabled() && next) openClip(next);
+      else closeClip();
+    }
   }
-  if (status === 'saved') {
-    await fetch(`/api/matches/${matchId}/clips/score-saved`, { method: 'POST' });
-  }
-  location.reload();
 }
 
 let rejectClipId = null;
+let rejectCard = null;
 const rejectModal = document.getElementById('reject-modal');
 const rejectReason = document.getElementById('reject-reason');
 const rejectDetailWrap = document.getElementById('reject-detail-wrap');
@@ -731,8 +949,9 @@ function updateRejectDetail() {
   if (!show) rejectDetail.value = '';
 }
 
-function openReject(clipId) {
+function openReject(clipId, card = null) {
   rejectClipId = clipId;
+  rejectCard = card || (currentClipCard && currentClipId === clipId ? currentClipCard : null);
   rejectReason.value = 'dead_time';
   rejectDetail.value = '';
   rejectNote.value = '';
@@ -744,11 +963,16 @@ function openReject(clipId) {
 function closeReject() {
   rejectModal.hidden = true;
   rejectClipId = null;
+  rejectCard = null;
 }
 
 async function submitReject() {
   if (!rejectClipId) return;
   const button = document.getElementById('confirm-reject');
+  const card = rejectCard;
+  const wasNew = card && card.dataset.clipStatus === 'new';
+  const fromModal = card && currentClipCard === card;
+  const next = wasNew ? nextCardAfter(card) : null;
   button.disabled = true;
   const response = await fetch(`/api/clips/${rejectClipId}/reject`, {
     method: 'POST',
@@ -761,8 +985,45 @@ async function submitReject() {
     button.disabled = false;
     return;
   }
-  location.reload();
+  if (card) removeCard(card);
+  closeReject();
+  button.disabled = false;
+  if (fromModal) {
+    if (wasNew && autoAdvanceEnabled() && next) openClip(next);
+    else closeClip();
+  }
 }
+
+document.querySelectorAll('[data-open-clip]').forEach((button) => {
+  button.addEventListener('click', () => openClip(button.closest('.clip-card')));
+});
+
+document.querySelectorAll('[data-save-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleSave(button.closest('.clip-card'));
+  });
+});
+document.querySelectorAll('[data-move-new]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleMoveNew(button.closest('.clip-card'));
+  });
+});
+document.querySelectorAll('[data-delete-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const card = button.closest('.clip-card');
+    openReject(card.dataset.clipId, card);
+  });
+});
+document.querySelectorAll('[data-star-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const card = button.closest('.clip-card');
+    handleStar(card, card.dataset.clipStarred !== '1');
+  });
+});
 
 rejectReason.addEventListener('change', updateRejectDetail);
 document.getElementById('close-reject').addEventListener('click', closeReject);
@@ -771,64 +1032,104 @@ document.getElementById('confirm-reject').addEventListener('click', submitReject
 rejectModal.addEventListener('click', (event) => {
   if (event.target === rejectModal) closeReject();
 });
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !rejectModal.hidden) closeReject();
-});
-
-document.querySelectorAll('[data-save-clip]').forEach((button) => {
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    updateClipStatus(button.closest('.clip-card').dataset.clipId, 'saved');
-  });
-});
-document.querySelectorAll('[data-move-new]').forEach((button) => {
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    updateClipStatus(button.closest('.clip-card').dataset.clipId, 'new');
-  });
-});
-document.querySelectorAll('[data-delete-clip]').forEach((button) => {
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    openReject(button.closest('.clip-card').dataset.clipId);
-  });
-});
-document.querySelectorAll('[data-star-clip]').forEach((button) => {
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const card = button.closest('.clip-card');
-    toggleStar(card.dataset.clipId, card.dataset.clipStarred !== '1');
-  });
-});
 
 document.getElementById('close-clip').addEventListener('click', closeClip);
 clipModal.addEventListener('click', (event) => {
   if (event.target === clipModal) closeClip();
 });
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !clipModal.hidden) closeClip();
-});
 saveClipButton.addEventListener('click', () => {
-  if (currentClipId && currentClipStatus !== 'saved') {
-    updateClipStatus(currentClipId, 'saved');
-  }
+  if (currentClipCard) handleSave(currentClipCard, true);
 });
 moveClipNewButton.addEventListener('click', () => {
-  if (currentClipId && currentClipStatus === 'saved') {
-    updateClipStatus(currentClipId, 'new');
-  }
+  if (currentClipCard) handleMoveNew(currentClipCard, true);
 });
 document.getElementById('delete-clip').addEventListener('click', () => {
-  if (currentClipId) openReject(currentClipId);
+  if (currentClipId) openReject(currentClipId, currentClipCard);
 });
 starClipButton.addEventListener('click', () => {
-  if (currentClipId) toggleStar(currentClipId, !currentClipStarred);
+  if (currentClipCard) handleStar(currentClipCard, !currentClipStarred, true);
 });
 seekOriginalButton.addEventListener('click', () => {
   if (currentClipStart === null) return;
   const start = currentClipStart;
   closeClip();
   seekOriginal(start);
+});
+
+function sortNewClips(mode) {
+  if (!newPanel) return;
+  const grid = ensureGrid(newPanel);
+  if (!grid) return;
+  const cards = [...grid.querySelectorAll('.clip-card')];
+  cards.sort((a, b) => {
+    if (mode === 'uncertain') {
+      return parseFloat(a.dataset.uncertainty || '1') - parseFloat(b.dataset.uncertainty || '1');
+    }
+    if (mode === 'score') {
+      return parseFloat(b.dataset.score || '0') - parseFloat(a.dataset.score || '0');
+    }
+    return parseFloat(a.dataset.clipStart || '0') - parseFloat(b.dataset.clipStart || '0');
+  });
+  cards.forEach((card) => grid.appendChild(card));
+}
+
+if (clipSortSelect) {
+  const savedMode = localStorage.getItem('vt-clip-sort') || 'time';
+  clipSortSelect.value = savedMode;
+  clipSortSelect.addEventListener('change', () => {
+    localStorage.setItem('vt-clip-sort', clipSortSelect.value);
+    sortNewClips(clipSortSelect.value);
+  });
+  if (savedMode !== 'time') sortNewClips(savedMode);
+}
+
+const fastReviewButton = document.getElementById('fast-review');
+if (fastReviewButton) {
+  fastReviewButton.addEventListener('click', () => {
+    sortNewClips(clipSortSelect ? clipSortSelect.value : 'time');
+    const cards = newCards();
+    if (!cards.length) {
+      alert('Nenhum clipe não verificado.');
+      return;
+    }
+    openClip(cards[0]);
+  });
+}
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable;
+}
+
+document.addEventListener('keydown', (event) => {
+  if (!rejectModal.hidden) {
+    if (event.key === 'Escape') closeReject();
+    return;
+  }
+  if (isTypingTarget(event.target)) return;
+  if (clipModal.hidden) return;
+  if (event.key === 'Escape') {
+    closeClip();
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (key === 's') {
+    event.preventDefault();
+    if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true);
+  } else if (key === 'd') {
+    event.preventDefault();
+    if (currentClipId) openReject(currentClipId, currentClipCard);
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    openAdjacent(1);
+  } else if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    openAdjacent(-1);
+  } else if (event.key === ' ') {
+    event.preventDefault();
+    if (clipVideo.paused) clipVideo.play().catch(() => {});
+    else clipVideo.pause();
+  }
 });
 
 document.querySelectorAll('.clip-tab').forEach((button) => {

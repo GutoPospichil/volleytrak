@@ -18,6 +18,8 @@ from ..constants import (
 )
 from ..db import (
     get_match,
+    learning_stats,
+    list_recent_learning_examples,
     list_clip_rejections,
     list_clips,
     list_events,
@@ -59,8 +61,25 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
         row["detail"] for row in rejections if row["detail"]
     )
     match_data = match_dict(row)
-    clips_new = [dict(clip) for clip in list_clips(match_id, "new")]
-    clips_saved = [dict(clip) for clip in list_clips(match_id, "saved")]
+
+    def enrich_clip(clip: dict) -> dict:
+        payload = {}
+        if clip.get("features"):
+            try:
+                payload = json.loads(clip["features"])
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+        ranker_score = payload.get("ranker_score")
+        if isinstance(ranker_score, (int, float)):
+            confidence = float(ranker_score)
+        else:
+            confidence = float(clip.get("score") or 0.0)
+        clip["ranker_score"] = ranker_score
+        clip["uncertainty"] = round(abs(confidence - 50.0) / 50.0, 3)
+        return clip
+
+    clips_new = [enrich_clip(dict(clip)) for clip in list_clips(match_id, "new")]
+    clips_saved = [enrich_clip(dict(clip)) for clip in list_clips(match_id, "saved")]
     all_clips = clips_new + clips_saved
     duration = 0.0
     if match_data.get("result"):
@@ -128,6 +147,44 @@ def calibrate(request: Request, match_id: int):
         request,
         "calibrate.html",
         {"match": match_dict(row), "calibration_modes": CALIBRATION_MODES},
+    )
+
+
+@router.get("/aprendizado", response_class=HTMLResponse)
+def learning_page(request: Request):
+    stats = learning_stats()
+    reasons: Counter[str] = Counter()
+    for reason, count in stats.get("reasons", {}).items():
+        canonical = CLIP_REJECTION_CANONICAL.get(reason or "other", reason or "other")
+        reasons[canonical] += int(count)
+    stats["reasons"] = dict(reasons)
+    recent = [dict(row) for row in list_recent_learning_examples(20)]
+    for row in recent:
+        canonical = CLIP_REJECTION_CANONICAL.get(
+            row["reason"] or "other", row["reason"] or "other"
+        )
+        row["reason_label"] = CLIP_REJECTION_LABELS.get(canonical, canonical)
+        try:
+            row["features_data"] = json.loads(row["features"]) if row["features"] else {}
+        except (TypeError, json.JSONDecodeError):
+            row["features_data"] = {}
+    ranker_info = None
+    ranker_path = JOB_DIR.parent / "feedback_ranker.json"
+    if ranker_path.is_file():
+        try:
+            ranker_info = json.loads(ranker_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            ranker_info = None
+    return templates.TemplateResponse(
+        request,
+        "learning.html",
+        {
+            "stats": stats,
+            "recent": recent,
+            "ranker_info": ranker_info,
+            "rejection_labels": CLIP_REJECTION_LABELS,
+            "rejection_details": CLIP_REJECTION_DETAIL_LABELS,
+        },
     )
 
 

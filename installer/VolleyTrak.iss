@@ -1,6 +1,6 @@
-﻿#define Root "D:\volleytrak"
+#define Root "D:\volleytrak"
 #define AppName "VolleyTrak"
-#define AppVersion "0.3.4"
+#define AppVersion "0.3.5"
 #define AppPublisher "VolleyTrak Local"
 
 [Setup]
@@ -37,8 +37,8 @@ Source: "{#Root}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recu
 Source: "{#Root}\portable-python\*"; DestDir: "{app}\portable-python"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\data\models\*"; DestDir: "{localappdata}\VolleyTrakData\models"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#Root}\data\feedback_profile.json"; DestDir: "{localappdata}\VolleyTrakData"; Flags: onlyifdoesntexist ignoreversion
-Source: "{#Root}\data\feedback_ranker.json"; DestDir: "{localappdata}\VolleyTrakData"; Flags: onlyifdoesntexist ignoreversion
+Source: "{#Root}\data\feedback_profile.json"; DestDir: "{localappdata}\VolleyTrakData"; Flags: ignoreversion
+Source: "{#Root}\data\feedback_ranker.json"; DestDir: "{localappdata}\VolleyTrakData"; Flags: ignoreversion
 Source: "{#Root}\installer\start-portable.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\installer\Abrir VolleyTrak.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\README.md"; DestDir: "{app}"; Flags: ignoreversion

@@ -1,16 +1,26 @@
-# VolleyTrak 0.3.4 beta
+# VolleyTrak 0.3.5 beta
 
-- Novo botão **Gerar novamente (aprendizados)** na página da partida.
-- A nova geração usa o perfil aprendido, o ranker e os clipes excluídos, sem rodar VballNet de novo.
-- Clipes salvos são preservados.
-- Trechos excluídos como **Corte errado / rally pela metade** podem voltar como **Recuperado**, com pré/pós-roll ajustado pelo submotivo.
-- Opção **Reavaliar minutos sem clipes no mapa de calor** (marcada por padrão): procura rallies nos vãos do mapa e cria candidatos com o selo **Lacuna**.
-- Nova ferramenta de **Corte manual** abaixo do vídeo:
-  - clique num bloco/vão do mapa para posicionar e já marcar 15s;
-  - marque início/fim, pré-visualize e crie o clipe;
-  - o clipe manual vai direto para **Salvos** com o selo **Manual** e não é apagado na próxima geração.
-- O resumo mostra o modo de áudio e o aprendizado aplicado (pré/pós-roll, velocidade, bola mínima e AUC do ranker).
-- O limite de candidatos comuns subiu para 100 e os candidatos de lacuna/recuperados não são descartados por ele.
+## Banco de aprendizado
+- Nova tabela local `learning_examples`: cada clipe salvo ou excluído vira um exemplo com label, motivo, features e peso.
+- O histórico existente é importado automaticamente na primeira execução.
+- Página **Aprendizado** com contagens, motivos, exemplos recentes e AUC do ranker.
+- Exportação do banco em **CSV** ou **JSON** (sem vídeos), útil para juntar feedback de testadores.
+- Botão **Atualizar modelos agora**: treina o ranker e recalcula o perfil global sem gerar clipes.
+- O ranker agora usa pesos: estrela = 2, duplicado = 0.5, corte errado = 0.8, tempo morto/fora de rally = 1.2.
+- O perfil global passou a ser recalculado a partir de todos os feedbacks (pré-roll 2.9 s, pós-roll 1.7 s, bola mínima 18%).
+
+## Revisão rápida
+- Botão **Revisão rápida** abre o primeiro clipe não verificado.
+- Atalhos: **S** salvar, **D** excluir, **←/→** navegar, **Espaço** play/pause, **Esc** fechar.
+- **Avançar após salvar/excluir** automático.
+- Ordenação **Mais incertos primeiro** pelo score do ranker.
+- Salvar/excluir atualiza a lista na hora, sem recarregar a página.
+- A nota dos salvos é calculada sob demanda em **Calcular notas**, deixando a revisão mais rápida.
+
+## Outros
+- O modo de áudio e o aprendizado aplicado continuam visíveis na partida.
+- O link **Aprendizado** aparece no topo do app.
+- Esta versão não faz triagem automática de clipes: com a AUC atual (~0.64), a revisão dos incertos ainda é o caminho seguro.
 
 Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
 Windows 10/11 x64, driver NVIDIA e ~8 GB livres.

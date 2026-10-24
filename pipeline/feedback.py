@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.config import JOB_DIR
 from app.constants import CLIP_REJECTION_CANONICAL, CLIP_REJECTION_LABELS
-from app.db import get_match, list_clip_rejections
+from app.db import get_match, list_clip_rejections, list_matches
 
 KEYWORDS = {
     "dead_time": [
@@ -182,6 +182,18 @@ def build_profile_for_match(match_id: int) -> dict:
     job_dir = JOB_DIR / f"match-{match_id}"
     job_dir.mkdir(parents=True, exist_ok=True)
     (job_dir / "feedback_profile.json").write_text(
+        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return profile
+
+
+def build_global_profile() -> dict:
+    rows = []
+    for match in list_matches():
+        rows.extend(list_clip_rejections(match["id"]))
+    profile = build_profile(rows)
+    path = JOB_DIR.parent / "feedback_profile.json"
+    path.write_text(
         json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return profile

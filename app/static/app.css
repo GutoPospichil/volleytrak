@@ -1057,3 +1057,21 @@ video {
   outline: 2px solid var(--ok);
   outline-offset: 2px;
 }
+
+.review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+
+.review-toolbar .check-line {
+  margin: 0;
+}
+
+.review-toolbar select {
+  width: auto;
+  min-height: 34px;
+  padding: 4px 8px;
+}

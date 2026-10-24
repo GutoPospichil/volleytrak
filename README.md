@@ -155,3 +155,47 @@ Na página da partida, abaixo do vídeo, há a ferramenta **Corte manual**:
 O clipe manual é salvo direto na aba **Salvos**, com o selo **Manual**, e entra no highlight. Ele não é apagado na próxima geração. Para refazer, exclua o clipe manual normalmente.
 
 > Observação: o corte manual usa o ffmpeg local; o vídeo original não é alterado.
+
+## Banco de aprendizado e revisão rápida
+
+O app já guardava os feedbacks no SQLite. Agora existe uma tabela dedicada, `learning_examples`, e a página **Aprendizado** em `/aprendizado`.
+
+Cada clipe salvo ou excluído vira uma linha com:
+
+- label **bom/ruim**;
+- motivo, submotivo e observação;
+- features de bola, contatos, áudio, duração e score;
+- peso do exemplo;
+- partida, trecho e data.
+
+Pesos atuais: estrela = 2, salvo = 1, duplicado = 0.5, corte errado = 0.8, tempo morto/fora de rally = 1.2. O ranker treina com essa tabela, então cada revisão é reaproveitada em todas as próximas gerações.
+
+Na página **Aprendizado** você pode:
+
+- ver quantos exemplos bons/ruins existem e os motivos mais comuns;
+- baixar o banco em **CSV** ou **JSON** (sem vídeos, só metadados e features);
+- treinar o ranker na hora, sem gerar clipes.
+
+O CSV é útil para juntar o aprendizado de vários testadores depois. Nesta versão ele é só exportação; importação automática fica para a próxima etapa.
+
+### Revisão rápida
+
+Para reduzir o tempo de conferência:
+
+- botão **Revisão rápida** abre o primeiro clipe não verificado;
+- **S** salva, **D** exclui, **←/→** navegam, **Espaço** dá play/pause;
+- **Avançar após salvar/excluir** abre o próximo automaticamente;
+- **Ordenar não verificados → Mais incertos primeiro** prioriza os clipes em que o ranker tem menos certeza;
+- salvar/excluir atualiza a lista na hora, sem recarregar a página;
+- a nota dos salvos é recalculada quando você clicar em **Calcular notas**, não a cada salvamento.
+
+### Próximo passo recomendado
+
+O banco sozinho não elimina a revisão manual, mas permite evoluir para **aprendizado ativo**:
+
+1. o modelo separa casos óbvios (alta confiança) dos incertos;
+2. você revisa primeiro apenas os incertos;
+3. casos óbvios podem ser triados automaticamente com possibilidade de desfazer;
+4. com mais exemplos, trocar a regressão logística por um modelo com mais features/boosting.
+
+Também é possível importar o CSV de outros testadores para somar o banco antes de treinar.

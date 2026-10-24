@@ -87,3 +87,16 @@ CALIBRATION_MODES = {
         "hint": "Clique nos cantos da linha de fundo e depois nos cantos da linha de ataque do lado próximo.",
     },
 }
+
+
+def learning_example_weight(label: str, reason: str = "", starred: bool = False) -> float:
+    if label == "good":
+        return 2.0 if starred else 1.0
+    canonical = CLIP_REJECTION_CANONICAL.get(reason or "", reason or "")
+    if canonical == "duplicate":
+        return 0.5
+    if canonical == "bad_cut":
+        return 0.8
+    if canonical in {"dead_time", "not_rally"}:
+        return 1.2
+    return 1.0

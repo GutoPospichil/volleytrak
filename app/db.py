@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from .config import DB_PATH, ensure_dirs
+from .constants import learning_example_weight
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS matches (
@@ -83,6 +84,27 @@ CREATE TABLE IF NOT EXISTS clip_rejections (
 
 CREATE INDEX IF NOT EXISTS idx_clip_rejections_match
     ON clip_rejections(match_id, start);
+
+CREATE TABLE IF NOT EXISTS learning_examples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    start REAL NOT NULL,
+    end REAL NOT NULL,
+    duration REAL NOT NULL,
+    label TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    features TEXT,
+    weight REAL NOT NULL DEFAULT 1.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(match_id, start, end)
+);
+
+CREATE INDEX IF NOT EXISTS idx_learning_examples_label
+    ON learning_examples(label);
 """
 
 MATCH_FIELDS = {
@@ -171,6 +193,209 @@ def init_db() -> None:
             )
         if "features" not in rejection_columns:
             conn.execute("ALTER TABLE clip_rejections ADD COLUMN features TEXT")
+    backfill_learning_examples()
+
+
+def _load_features(value: Any) -> dict | None:
+    if not value:
+        return None
+    try:
+        payload = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _upsert_learning_example(
+    conn: sqlite3.Connection,
+    match_id: int,
+    start: float,
+    end: float,
+    label: str,
+    reason: str = "",
+    detail: str = "",
+    note: str = "",
+    source: str = "",
+    features: dict[str, Any] | None = None,
+    weight: float = 1.0,
+) -> None:
+    if label not in {"good", "bad"}:
+        raise ValueError("label de aprendizado inválido")
+    start = round(float(start), 2)
+    end = round(float(end), 2)
+    duration = round(end - start, 2)
+    if duration <= 0:
+        return
+    payload = json.dumps(features, ensure_ascii=False) if features is not None else None
+    conn.execute(
+        """
+        INSERT INTO learning_examples
+            (match_id, start, end, duration, label, reason, detail, note, source, features, weight)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(match_id, start, end) DO UPDATE SET
+            duration = excluded.duration,
+            label = excluded.label,
+            reason = excluded.reason,
+            detail = excluded.detail,
+            note = excluded.note,
+            source = excluded.source,
+            features = excluded.features,
+            weight = excluded.weight,
+            updated_at = datetime('now')
+        """,
+        (
+            match_id,
+            start,
+            end,
+            duration,
+            label,
+            reason or "",
+            detail or "",
+            note or "",
+            source or "",
+            payload,
+            float(weight),
+        ),
+    )
+
+
+def upsert_learning_example(
+    match_id: int,
+    start: float,
+    end: float,
+    label: str,
+    reason: str = "",
+    detail: str = "",
+    note: str = "",
+    source: str = "",
+    features: dict[str, Any] | None = None,
+    weight: float = 1.0,
+) -> None:
+    with db() as conn:
+        _upsert_learning_example(
+            conn,
+            match_id,
+            start,
+            end,
+            label,
+            reason,
+            detail,
+            note,
+            source,
+            features,
+            weight,
+        )
+
+
+def remove_learning_example(match_id: int, start: float, end: float) -> None:
+    start = round(float(start), 2)
+    end = round(float(end), 2)
+    with db() as conn:
+        conn.execute(
+            "DELETE FROM learning_examples WHERE match_id = ? AND start = ? AND end = ?",
+            (match_id, start, end),
+        )
+
+
+def backfill_learning_examples() -> int:
+    with db() as conn:
+        existing = conn.execute("SELECT COUNT(*) FROM learning_examples").fetchone()[0]
+        if existing:
+            return 0
+        saved = conn.execute("SELECT * FROM clips WHERE status = 'saved'").fetchall()
+        rejected = conn.execute("SELECT * FROM clip_rejections").fetchall()
+        total = 0
+        for rejection in rejected:
+            features = _load_features(rejection["features"])
+            reason = rejection["reason"] or "other"
+            source = ""
+            if features and features.get("source"):
+                source = str(features["source"])
+            _upsert_learning_example(
+                conn,
+                rejection["match_id"],
+                rejection["start"],
+                rejection["end"],
+                "bad",
+                reason=reason,
+                detail=rejection["detail"] or "",
+                note=rejection["note"] or "",
+                source=source,
+                features=features,
+                weight=learning_example_weight("bad", reason),
+            )
+            total += 1
+        for clip in saved:
+            features = _load_features(clip["features"])
+            _upsert_learning_example(
+                conn,
+                clip["match_id"],
+                clip["start"],
+                clip["end"],
+                "good",
+                source=clip["source"] or "",
+                features=features,
+                weight=learning_example_weight(
+                    "good", starred=bool(clip["starred"])
+                ),
+            )
+            total += 1
+        return total
+
+
+def learning_stats() -> dict:
+    with db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM learning_examples").fetchone()[0]
+        good = conn.execute(
+            "SELECT COUNT(*) FROM learning_examples WHERE label = 'good'"
+        ).fetchone()[0]
+        bad = conn.execute(
+            "SELECT COUNT(*) FROM learning_examples WHERE label = 'bad'"
+        ).fetchone()[0]
+        matches = conn.execute(
+            "SELECT COUNT(DISTINCT match_id) FROM learning_examples"
+        ).fetchone()[0]
+        reasons = conn.execute(
+            """
+            SELECT reason, COUNT(*) AS count
+            FROM learning_examples
+            WHERE label = 'bad'
+            GROUP BY reason
+            ORDER BY count DESC, reason
+            """
+        ).fetchall()
+        last_updated = conn.execute(
+            "SELECT MAX(updated_at) FROM learning_examples"
+        ).fetchone()[0]
+    return {
+        "total": int(total),
+        "good": int(good),
+        "bad": int(bad),
+        "matches": int(matches),
+        "reasons": {row["reason"] or "other": int(row["count"]) for row in reasons},
+        "last_updated": last_updated,
+    }
+
+
+def list_learning_examples() -> list[sqlite3.Row]:
+    with db() as conn:
+        return conn.execute(
+            "SELECT * FROM learning_examples ORDER BY match_id, start, id"
+        ).fetchall()
+
+
+def list_recent_learning_examples(limit: int = 20) -> list[sqlite3.Row]:
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT le.*, m.title AS match_title
+            FROM learning_examples le
+            LEFT JOIN matches m ON m.id = le.match_id
+            ORDER BY le.updated_at DESC, le.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
 
 
 def get_match(match_id: int) -> sqlite3.Row | None:

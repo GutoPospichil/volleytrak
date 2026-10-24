@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import mimetypes
 import os
@@ -10,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ..config import (
     JOB_DIR,
@@ -22,6 +24,7 @@ from ..config import (
 )
 from collections import Counter
 
+from ..constants import learning_example_weight
 from ..db import (
     add_clip,
     add_clip_rejection,
@@ -36,14 +39,18 @@ from ..db import (
     get_event,
     get_match,
     get_player,
+    learning_stats,
     list_clip_rejections,
     list_clips,
+    list_learning_examples,
     list_events,
     list_matches,
     list_players,
+    remove_learning_example,
     set_clip_starred,
     set_clip_status,
     update_match,
+    upsert_learning_example,
 )
 from ..schemas import (
     CalibrationIn,
@@ -413,6 +420,15 @@ def create_manual_clip(match_id: int, payload: ManualClipIn):
         source="manual",
         features=features,
     )
+    upsert_learning_example(
+        match_id,
+        start,
+        end,
+        "good",
+        source="manual",
+        features=features,
+        weight=1.0,
+    )
     _invalidate_highlight(match_id)
     return {
         "ok": True,
@@ -429,9 +445,12 @@ def update_clip_status(clip_id: int, payload: ClipStatusIn):
     if clip is None:
         raise HTTPException(status_code=404, detail="Clipe não encontrado")
     set_clip_status(clip_id, payload.status)
+    if payload.status == "saved":
+        _record_learning_example(clip, "good")
+    else:
+        remove_learning_example(clip["match_id"], clip["start"], clip["end"])
     _invalidate_highlight(clip["match_id"])
     return {"ok": True, "id": clip_id, "status": payload.status}
-
 
 def _clip_features(clip) -> dict:
     features = {}
@@ -452,7 +471,34 @@ def _clip_features(clip) -> dict:
     return features
 
 
+def _record_learning_example(
+    clip,
+    label: str,
+    reason: str = "",
+    detail: str = "",
+    note: str = "",
+    weight: float | None = None,
+) -> None:
+    if weight is None:
+        weight = learning_example_weight(
+            label, reason, bool(clip["starred"])
+        )
+    upsert_learning_example(
+        clip["match_id"],
+        clip["start"],
+        clip["end"],
+        label,
+        reason=reason,
+        detail=detail,
+        note=note,
+        source=clip["source"] or "",
+        features=_clip_features(clip),
+        weight=weight,
+    )
+
+
 def _reject_clip(clip, reason: str, note: str, detail: str = "") -> None:
+    _record_learning_example(clip, "bad", reason=reason, detail=detail, note=note)
     add_clip_rejection(
         clip["match_id"],
         clip["start"],
@@ -478,6 +524,12 @@ def star_clip(clip_id: int, payload: ClipStarIn):
     set_clip_starred(clip_id, payload.starred)
     if payload.starred and clip["status"] == "new":
         set_clip_status(clip_id, "saved")
+    if clip["status"] == "saved" or payload.starred:
+        _record_learning_example(
+            clip,
+            "good",
+            weight=2.0 if payload.starred else 1.0,
+        )
     _invalidate_highlight(clip["match_id"])
     if payload.starred or clip["status"] == "saved":
         subprocess.run(
@@ -713,6 +765,139 @@ def generate_clips(
     finally:
         log_file.close()
     return {"ok": True}
+
+
+@router.get("/learning/stats")
+def get_learning_stats():
+    stats = learning_stats()
+    model = None
+    ranker_path = JOB_DIR.parent / "feedback_ranker.json"
+    if ranker_path.is_file():
+        try:
+            model = json.loads(ranker_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            model = None
+    stats["ranker"] = {
+        "cv_auc": (model or {}).get("cv_auc"),
+        "n_examples": (model or {}).get("n_examples"),
+        "n_positive": (model or {}).get("n_positive"),
+        "n_negative": (model or {}).get("n_negative"),
+    }
+    return stats
+
+
+def _learning_row(row) -> dict:
+    features = {}
+    if row["features"]:
+        try:
+            features = json.loads(row["features"])
+        except (TypeError, json.JSONDecodeError):
+            features = {}
+    return {
+        "match_id": row["match_id"],
+        "start": row["start"],
+        "end": row["end"],
+        "duration": row["duration"],
+        "label": row["label"],
+        "reason": row["reason"],
+        "detail": row["detail"],
+        "note": row["note"],
+        "source": row["source"],
+        "weight": row["weight"],
+        "updated_at": row["updated_at"],
+        "features": features,
+    }
+
+
+@router.get("/learning/export")
+def export_learning(format: str = "csv"):
+    rows = list_learning_examples()
+    if format == "json":
+        payload = json.dumps(
+            [_learning_row(row) for row in rows],
+            ensure_ascii=False,
+            indent=2,
+        )
+        return Response(
+            content=payload,
+            media_type="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="volleytrak-aprendizado.json"'
+            },
+        )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "match_id",
+            "start",
+            "end",
+            "duration",
+            "label",
+            "reason",
+            "detail",
+            "note",
+            "source",
+            "weight",
+            "score",
+            "ball_pct",
+            "max_speed",
+            "contacts",
+            "ranker_score",
+            "audio",
+            "features_json",
+        ]
+    )
+    for row in rows:
+        payload = _learning_row(row)
+        features = payload["features"]
+        writer.writerow(
+            [
+                payload["match_id"],
+                payload["start"],
+                payload["end"],
+                payload["duration"],
+                payload["label"],
+                payload["reason"],
+                payload["detail"],
+                payload["note"],
+                payload["source"],
+                payload["weight"],
+                features.get("score", ""),
+                features.get("ball_pct", ""),
+                features.get("max_speed", ""),
+                features.get("contacts", ""),
+                features.get("ranker_score", ""),
+                1 if features.get("source") == "audio" else 0,
+                json.dumps(features, ensure_ascii=False),
+            ]
+        )
+    return Response(
+        content="﻿" + buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="volleytrak-aprendizado.csv"'
+        },
+    )
+
+
+@router.post("/learning/train")
+def train_learning():
+    from pipeline.feedback import build_global_profile
+    from pipeline.ranker import train_and_save
+
+    model = train_and_save()
+    profile = build_global_profile()
+    return {
+        "ok": True,
+        "cv_auc": model.get("cv_auc"),
+        "n_examples": model.get("n_examples"),
+        "n_positive": model.get("n_positive"),
+        "n_negative": model.get("n_negative"),
+        "global_profile": profile.get("trim", {}),
+        "min_ball_pct": profile.get("min_ball_pct"),
+    }
 
 
 @router.get("/players")
