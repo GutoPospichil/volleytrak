@@ -7,21 +7,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from app.config import JOB_DIR
-from app.constants import CLIP_REJECTION_LABELS
+from app.constants import CLIP_REJECTION_CANONICAL, CLIP_REJECTION_LABELS
 from app.db import get_match, list_clip_rejections
 
 KEYWORDS = {
-    "ball_on_floor": [
-        "chao",
-        "no chao",
-        "quicou",
-        "parada",
-        "parou",
-        "rolando",
-        "rola",
-        "bola no chao",
-        "bola no chão",
-    ],
     "dead_time": [
         "tempo morto",
         "demorou",
@@ -33,8 +22,26 @@ KEYWORDS = {
         "comemora",
         "nao parou",
         "não parou",
+        "chao",
+        "no chao",
+        "quicou",
+        "parada",
+        "parou",
+        "rolando",
+        "rola",
+        "bola no chao",
+        "bola no chão",
     ],
-    "half_rally": [
+    "bad_cut": [
+        "corte",
+        "cortou",
+        "comeca",
+        "começa",
+        "termina",
+        "antes",
+        "depois",
+        "inicio",
+        "início",
         "pela metade",
         "rally pela metade",
         "comeca no meio",
@@ -49,17 +56,6 @@ KEYWORDS = {
         "faltou o comeco",
         "faltou o começo",
         "incompleto",
-    ],
-    "bad_cut": [
-        "corte",
-        "cortou",
-        "comeca",
-        "começa",
-        "termina",
-        "antes",
-        "depois",
-        "inicio",
-        "início",
     ],
     "not_rally": [
         "aquecimento",
@@ -79,6 +75,7 @@ def normalize(text: str) -> str:
 
 
 def infer_reason(reason: str, note: str) -> str:
+    reason = CLIP_REJECTION_CANONICAL.get(reason or "", reason or "other")
     if reason and reason != "other":
         return reason
     text = normalize(note)
@@ -97,6 +94,7 @@ def build_profile(
     notes_used = 0
     for row in rejections:
         original = row["reason"] or "other"
+        original = CLIP_REJECTION_CANONICAL.get(original, original)
         inferred = infer_reason(original, row["note"] or "")
         counts[original] += 1
         inferred_counts[inferred] += 1
@@ -117,39 +115,15 @@ def build_profile(
     pre_roll = float(baseline_trim.get("pre_roll", 1.0))
     post_roll = float(baseline_trim.get("post_roll", 1.8))
     active_speed = float(baseline_trim.get("active_speed", 2.5))
-    dead = inferred_counts.get("dead_time", 0) + inferred_counts.get("ball_on_floor", 0)
+    dead = inferred_counts.get("dead_time", 0)
     if dead >= min_examples:
         post_roll = min(post_roll, max(0.8, round(1.8 - 0.15 * dead, 2)))
         active_speed = max(active_speed, min(4.0, round(2.5 + 0.1 * dead, 2)))
 
-    bad_cut_notes = [
-        normalize(row["note"] or "")
-        for row in rejections
-        if infer_reason(row["reason"] or "other", row["note"] or "") == "bad_cut"
-    ]
-    start_hits = sum(
-        1
-        for note in bad_cut_notes
-        if any(word in note for word in ("comeca", "começa", "antes", "inicio", "início"))
-    )
-    end_hits = sum(
-        1
-        for note in bad_cut_notes
-        if any(word in note for word in ("termina", "terminou", "depois", "fim", "final"))
-    )
     bad_cut = inferred_counts.get("bad_cut", 0)
     if bad_cut >= min_examples:
-        if start_hits > end_hits:
-            pre_roll = max(pre_roll, min(2.5, round(1.0 + 0.25 * bad_cut, 2)))
-        elif end_hits > start_hits:
-            post_roll = min(post_roll, max(0.8, round(1.8 - 0.15 * end_hits, 2)))
-        else:
-            pre_roll = max(pre_roll, min(2.0, round(1.0 + 0.15 * bad_cut, 2)))
-
-    half_rally = inferred_counts.get("half_rally", 0)
-    if half_rally >= min_examples:
-        pre_roll = max(pre_roll, min(4.0, round(1.0 + 0.25 * half_rally, 2)))
-        post_roll = max(post_roll, min(4.0, round(1.8 + 0.20 * half_rally, 2)))
+        pre_roll = max(pre_roll, min(3.0, round(1.0 + 0.15 * bad_cut, 2)))
+        post_roll = max(post_roll, min(2.5, round(1.2 + 0.06 * bad_cut, 2)))
 
     min_ball_pct = float((baseline or {}).get("min_ball_pct", 0.10))
     if inferred_counts.get("not_rally", 0) >= min_examples:

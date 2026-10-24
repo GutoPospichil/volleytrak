@@ -89,3 +89,14 @@ Projeto pessoal em desenvolvimento. Dependências e modelos mantêm suas licenç
 - Clique em um bloco ou em um vão para abrir o vídeo original naquele ponto.
 - Ao excluir um clipe que começa no meio ou termina antes do ponto, escolha **Rally pela metade**.
 - Esse motivo, depois de alguns exemplos, aumenta o pré/pós-roll para tentar pegar o rally completo.
+
+
+## Opções atuais de exclusão
+
+- **Tempo morto / bola no chão**: pausa, bola parada ou ponto encerrado.
+- **Fora de rally (aquecimento/treino)**: conteúdo que não é um ponto de partida.
+- **Corte errado / rally pela metade**: começo/fim errados, inclusive rally incompleto.
+- **Duplicado**: o mesmo rally já está em outro clipe.
+- **Outro**: use a observação para explicar.
+
+Tempo morto e bola no chão agora têm o mesmo peso; corte errado e rally pela metade também. O histórico antigo é convertido para essas categorias.

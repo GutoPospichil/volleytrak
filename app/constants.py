@@ -23,13 +23,16 @@ STATUS_LABELS = {
 }
 
 CLIP_REJECTION_LABELS = {
-    "dead_time": "Tempo morto",
-    "ball_on_floor": "Bola no chão",
-    "not_rally": "Não é rally",
-    "bad_cut": "Corte errado",
-    "half_rally": "Rally pela metade",
+    "dead_time": "Tempo morto / bola no chão",
+    "not_rally": "Fora de rally (aquecimento/treino)",
+    "bad_cut": "Corte errado / rally pela metade",
     "duplicate": "Duplicado",
     "other": "Outro",
+}
+
+CLIP_REJECTION_CANONICAL = {
+    "ball_on_floor": "dead_time",
+    "half_rally": "bad_cut",
 }
 
 CALIBRATION_MODES = {

@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from ..config import JOB_DIR
 from ..constants import (
     CALIBRATION_MODES,
+    CLIP_REJECTION_CANONICAL,
     CLIP_REJECTION_LABELS,
     EVENT_KIND_LABELS,
     MANUAL_EVENT_KINDS,
@@ -50,7 +51,8 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
     highlight_path = JOB_DIR / f"match-{match_id}" / "highlight.mp4"
     rejections = list_clip_rejections(match_id)
     rejection_counts = Counter(
-        (row["reason"] or "other") for row in rejections
+        CLIP_REJECTION_CANONICAL.get(row["reason"] or "other", row["reason"] or "other")
+        for row in rejections
     )
     match_data = match_dict(row)
     clips_new = [dict(clip) for clip in list_clips(match_id, "new")]
