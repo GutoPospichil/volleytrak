@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS matches (
     played_on TEXT NOT NULL DEFAULT '',
     video_path TEXT NOT NULL,
     source TEXT NOT NULL DEFAULT 'upload',
+    whistle_mode TEXT NOT NULL DEFAULT 'with',
     status TEXT NOT NULL DEFAULT 'uploaded',
     progress REAL NOT NULL DEFAULT 0,
     message TEXT NOT NULL DEFAULT '',
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS clip_rejections (
     start REAL NOT NULL,
     end REAL NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     features TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -87,6 +89,7 @@ MATCH_FIELDS = {
     "title",
     "opponent",
     "played_on",
+    "whistle_mode",
     "status",
     "progress",
     "message",
@@ -144,12 +147,23 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(match_id, status, start)"
         )
+        match_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(matches)")
+        }
+        if "whistle_mode" not in match_columns:
+            conn.execute(
+                "ALTER TABLE matches ADD COLUMN whistle_mode TEXT NOT NULL DEFAULT 'with'"
+            )
         rejection_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(clip_rejections)")
         }
         if "reason" not in rejection_columns:
             conn.execute(
                 "ALTER TABLE clip_rejections ADD COLUMN reason TEXT NOT NULL DEFAULT ''"
+            )
+        if "detail" not in rejection_columns:
+            conn.execute(
+                "ALTER TABLE clip_rejections ADD COLUMN detail TEXT NOT NULL DEFAULT ''"
             )
         if "note" not in rejection_columns:
             conn.execute(
@@ -175,11 +189,14 @@ def create_match(
     source: str = "upload",
     opponent: str = "",
     played_on: str = "",
+    whistle_mode: str = "with",
 ) -> int:
+    if whistle_mode not in {"with", "without"}:
+        raise ValueError("whistle_mode deve ser with ou without")
     with db() as conn:
         cur = conn.execute(
-            "INSERT INTO matches (title, opponent, played_on, video_path, source) VALUES (?, ?, ?, ?, ?)",
-            (title, opponent, played_on, video_path, source),
+            "INSERT INTO matches (title, opponent, played_on, video_path, source, whistle_mode) VALUES (?, ?, ?, ?, ?, ?)",
+            (title, opponent, played_on, video_path, source, whistle_mode),
         )
         return int(cur.lastrowid)
 
@@ -395,6 +412,7 @@ def add_clip_rejection(
     start: float,
     end: float,
     reason: str = "",
+    detail: str = "",
     note: str = "",
     features: dict[str, Any] | None = None,
 ) -> int:
@@ -402,10 +420,10 @@ def add_clip_rejection(
     with db() as conn:
         cur = conn.execute(
             """
-            INSERT INTO clip_rejections (match_id, start, end, reason, note, features)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO clip_rejections (match_id, start, end, reason, detail, note, features)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (match_id, start, end, reason, note, payload),
+            (match_id, start, end, reason, detail, note, payload),
         )
         return int(cur.lastrowid)
 

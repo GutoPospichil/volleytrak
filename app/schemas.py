@@ -10,6 +10,14 @@ class LocalVideoIn(BaseModel):
     title: str | None = None
     opponent: str = ""
     played_on: str = ""
+    whistle_mode: str = "with"
+
+    @field_validator("whistle_mode")
+    @classmethod
+    def validate_whistle_mode(cls, mode: str) -> str:
+        if mode not in {"with", "without"}:
+            raise ValueError("modo de apito inválido")
+        return mode
 
 
 class CalibrationIn(BaseModel):
@@ -55,7 +63,15 @@ class ManualEventIn(BaseModel):
 
 class ClipRejectIn(BaseModel):
     reason: str = "other"
+    detail: str = ""
     note: str = ""
+
+    @field_validator("detail")
+    @classmethod
+    def validate_detail(cls, detail: str) -> str:
+        if detail not in {"", "start_late", "end_early", "both"}:
+            raise ValueError("detalhe de exclusão inválido")
+        return detail
 
     @field_validator("reason")
     @classmethod

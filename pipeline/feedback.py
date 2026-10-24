@@ -92,6 +92,8 @@ def build_profile(
     inferred_counts: Counter[str] = Counter()
     features: dict[str, list[float]] = defaultdict(list)
     notes_used = 0
+    bad_start_late = 0
+    bad_end_early = 0
     for row in rejections:
         original = row["reason"] or "other"
         original = CLIP_REJECTION_CANONICAL.get(original, original)
@@ -100,6 +102,12 @@ def build_profile(
         inferred_counts[inferred] += 1
         if original == "other" and inferred != original:
             notes_used += 1
+        if inferred == "bad_cut":
+            detail = row["detail"] if "detail" in row.keys() else ""
+            if detail in {"start_late", "both"}:
+                bad_start_late += 1
+            if detail in {"end_early", "both"}:
+                bad_end_early += 1
         if not row["features"]:
             continue
         try:
@@ -122,8 +130,18 @@ def build_profile(
 
     bad_cut = inferred_counts.get("bad_cut", 0)
     if bad_cut >= min_examples:
-        pre_roll = max(pre_roll, min(3.0, round(1.0 + 0.15 * bad_cut, 2)))
-        post_roll = max(post_roll, min(2.5, round(1.2 + 0.06 * bad_cut, 2)))
+        if bad_start_late or bad_end_early:
+            if bad_start_late:
+                pre_roll = max(
+                    pre_roll, min(4.0, round(2.5 + 0.2 * bad_start_late, 2))
+                )
+            if bad_end_early:
+                post_roll = max(
+                    post_roll, min(3.5, round(1.5 + 0.2 * bad_end_early, 2))
+                )
+        else:
+            pre_roll = max(pre_roll, min(3.0, round(1.0 + 0.15 * bad_cut, 2)))
+            post_roll = max(post_roll, min(2.5, round(1.2 + 0.06 * bad_cut, 2)))
 
     min_ball_pct = float((baseline or {}).get("min_ball_pct", 0.10))
     if inferred_counts.get("not_rally", 0) >= min_examples:

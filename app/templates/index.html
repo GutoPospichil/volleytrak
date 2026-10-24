@@ -50,6 +50,12 @@
         <label>Data
           <input type="date" name="played_on">
         </label>
+        <label>Apito
+          <select name="whistle_mode">
+            <option value="with">Jogo com apito</option>
+            <option value="without">Jogo sem apito</option>
+          </select>
+        </label>
       </div>
       <button class="button secondary" type="submit">Registrar</button>
       <p id="local-status" class="muted small"></p>
@@ -138,7 +144,8 @@ localForm.addEventListener('submit', async (event) => {
       path: data.get('path'),
       title: data.get('title'),
       opponent: data.get('opponent'),
-      played_on: data.get('played_on')
+      played_on: data.get('played_on'),
+      whistle_mode: data.get('whistle_mode') || 'with'
     })
   });
   if (!response.ok) {

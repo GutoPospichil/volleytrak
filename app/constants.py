@@ -35,6 +35,12 @@ CLIP_REJECTION_CANONICAL = {
     "half_rally": "bad_cut",
 }
 
+CLIP_REJECTION_DETAIL_LABELS = {
+    "start_late": "Clipe começa depois do saque",
+    "end_early": "Clipe acaba antes do ponto",
+    "both": "As duas coisas",
+}
+
 CALIBRATION_MODES = {
     "full": {
         "label": "Quadra inteira (4 cantos)",

@@ -10,6 +10,7 @@ from ..config import JOB_DIR
 from ..constants import (
     CALIBRATION_MODES,
     CLIP_REJECTION_CANONICAL,
+    CLIP_REJECTION_DETAIL_LABELS,
     CLIP_REJECTION_LABELS,
     EVENT_KIND_LABELS,
     MANUAL_EVENT_KINDS,
@@ -53,6 +54,9 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
     rejection_counts = Counter(
         CLIP_REJECTION_CANONICAL.get(row["reason"] or "other", row["reason"] or "other")
         for row in rejections
+    )
+    rejection_detail_counts = Counter(
+        row["detail"] for row in rejections if row["detail"]
     )
     match_data = match_dict(row)
     clips_new = [dict(clip) for clip in list_clips(match_id, "new")]
@@ -100,6 +104,8 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             "rejection_counts": dict(rejection_counts),
             "rejection_total": len(rejections),
             "rejection_labels": CLIP_REJECTION_LABELS,
+            "rejection_details": CLIP_REJECTION_DETAIL_LABELS,
+            "rejection_detail_counts": dict(rejection_detail_counts),
             "feedback_profile": feedback_profile,
         },
     )

@@ -86,7 +86,10 @@ async def upload_match(
     title: str = Form(""),
     opponent: str = Form(""),
     played_on: str = Form(""),
+    whistle_mode: str = Form("with"),
 ):
+    if whistle_mode not in {"with", "without"}:
+        raise HTTPException(status_code=400, detail="Modo de apito inválido")
     ensure_dirs()
     original = Path(file.filename or "video.mp4")
     extension = original.suffix.lower()
@@ -117,6 +120,7 @@ async def upload_match(
         source="upload",
         opponent=opponent.strip(),
         played_on=played_on.strip(),
+        whistle_mode=whistle_mode,
     )
     return match_dict(get_match(match_id))
 
@@ -135,6 +139,7 @@ def register_local_video(payload: LocalVideoIn):
         source="local",
         opponent=payload.opponent.strip(),
         played_on=payload.played_on.strip(),
+        whistle_mode=payload.whistle_mode,
     )
     return match_dict(get_match(match_id))
 
@@ -369,12 +374,13 @@ def _clip_features(clip) -> dict:
     return features
 
 
-def _reject_clip(clip, reason: str, note: str) -> None:
+def _reject_clip(clip, reason: str, note: str, detail: str = "") -> None:
     add_clip_rejection(
         clip["match_id"],
         clip["start"],
         clip["end"],
         reason=reason,
+        detail=detail,
         note=note,
         features=_clip_features(clip),
     )
@@ -411,8 +417,8 @@ def reject_clip(clip_id: int, payload: ClipRejectIn):
     clip = get_clip(clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="Clipe não encontrado")
-    _reject_clip(clip, payload.reason, payload.note)
-    return {"ok": True, "reason": payload.reason}
+    _reject_clip(clip, payload.reason, payload.note, payload.detail)
+    return {"ok": True, "reason": payload.reason, "detail": payload.detail}
 
 
 @router.delete("/clips/{clip_id}")
@@ -420,7 +426,7 @@ def remove_clip(clip_id: int):
     clip = get_clip(clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="Clipe não encontrado")
-    _reject_clip(clip, "other", "")
+    _reject_clip(clip, "other", "", "")
     return {"ok": True}
 
 

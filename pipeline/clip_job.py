@@ -57,6 +57,7 @@ def main() -> int:
     job_dir = JOB_DIR / f"match-{args.match_id}"
     job_dir.mkdir(parents=True, exist_ok=True)
     started = time.time()
+    whistle_mode = match["whistle_mode"] if "whistle_mode" in match.keys() else "with"
     update_match(
         args.match_id,
         status="processing",
@@ -83,21 +84,7 @@ def main() -> int:
                 log_file,
             )
 
-            update_progress(args.match_id, 60, "Detectando apitos...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.audio",
-                    "--match-id",
-                    str(args.match_id),
-                    "--threshold",
-                    str(args.threshold),
-                ],
-                log_file,
-            )
-
-            update_progress(args.match_id, 70, "Detectando contatos...")
+            update_progress(args.match_id, 50, "Detectando contatos...")
             run(
                 [
                     sys.executable,
@@ -113,43 +100,70 @@ def main() -> int:
                 log_file,
             )
 
-            update_progress(args.match_id, 78, "Montando rallies...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.rallies",
-                    "--match-id",
-                    str(args.match_id),
-                    "--ball",
-                    "ball_vballnet.jsonl",
-                    "--contacts",
-                    "contacts.json",
-                    "--output",
-                    "rallies_audio.json",
-                ],
-                log_file,
-            )
+            if whistle_mode == "with":
+                update_progress(args.match_id, 60, "Detectando apitos...")
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pipeline.audio",
+                        "--match-id",
+                        str(args.match_id),
+                        "--threshold",
+                        str(args.threshold),
+                    ],
+                    log_file,
+                )
+
+                update_progress(args.match_id, 78, "Montando rallies por apito...")
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pipeline.rallies",
+                        "--match-id",
+                        str(args.match_id),
+                        "--ball",
+                        "ball_vballnet.jsonl",
+                        "--contacts",
+                        "contacts.json",
+                        "--output",
+                        "rallies_audio.json",
+                    ],
+                    log_file,
+                )
+            else:
+                (job_dir / "whistles.json").unlink(missing_ok=True)
+                (job_dir / "rallies_audio.json").unlink(missing_ok=True)
+                update_progress(
+                    args.match_id,
+                    70,
+                    "Modo sem apito: usando bola e contatos...",
+                )
 
             update_progress(args.match_id, 86, "Cortando clipes...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.clips",
-                    "--match-id",
-                    str(args.match_id),
-                    "--min-score",
-                    str(args.min_score),
-                    "--max-clips",
-                    str(args.max_clips),
-                ],
-                log_file,
-            )
+            clips_command = [
+                sys.executable,
+                "-m",
+                "pipeline.clips",
+                "--match-id",
+                str(args.match_id),
+                "--min-score",
+                str(args.min_score),
+                "--max-clips",
+                str(args.max_clips),
+            ]
+            if whistle_mode == "without":
+                clips_command.append("--no-audio")
+            run(clips_command, log_file)
 
             ball_meta = json.loads((job_dir / "ball_vballnet.json").read_text(encoding="utf-8"))
             contacts = json.loads((job_dir / "contacts.json").read_text(encoding="utf-8"))
-            rallies = json.loads((job_dir / "rallies_audio.json").read_text(encoding="utf-8"))
+            rallies = (
+                json.loads((job_dir / "rallies_audio.json").read_text(encoding="utf-8"))
+                if whistle_mode == "with" and (job_dir / "rallies_audio.json").is_file()
+                else []
+            )
             clips = list_clips(args.match_id)
             fps = float(ball_meta.get("fps") or 30.0)
             duration = float(ball_meta.get("frames") or 0) / fps
@@ -171,7 +185,12 @@ def main() -> int:
                 "calibrated": True,
                 "calibration_mode": calibration.get("mode", "full"),
                 "elapsed_s": round(time.time() - started, 1),
-                "audio_whistles": len(json.loads((job_dir / "whistles.json").read_text(encoding="utf-8"))),
+                "audio_whistles": (
+                    len(json.loads((job_dir / "whistles.json").read_text(encoding="utf-8")))
+                    if whistle_mode == "with" and (job_dir / "whistles.json").is_file()
+                    else 0
+                ),
+                "whistle_mode": whistle_mode,
                 "audio_rallies": len(rallies),
                 "contacts": len(contacts),
                 "clips": len(clips),

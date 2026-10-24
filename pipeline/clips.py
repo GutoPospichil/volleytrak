@@ -137,6 +137,79 @@ def split_long_windows(
     return result, split_count
 
 
+def contact_windows(
+    contacts: list[dict],
+    records: list[dict],
+    duration: float,
+    max_gap: float = 4.0,
+    min_contacts: int = 3,
+    max_duration: float = 30.0,
+) -> list[dict]:
+    points = sorted(
+        float(item["t"])
+        for item in contacts
+        if float(item.get("score", 0.0)) >= 150.0
+    )
+    groups: list[list[float]] = []
+    current: list[float] = []
+    for point in points:
+        if current and point - current[-1] > max_gap:
+            groups.append(current)
+            current = []
+        current.append(point)
+    if current:
+        groups.append(current)
+
+    windows: list[dict] = []
+    for group in groups:
+        if len(group) < min_contacts:
+            continue
+        start = max(0.0, group[0] - 2.5)
+        end = min(duration, group[-1] + 1.5)
+        if end - start < 3.0 or end - start > max_duration:
+            continue
+        samples = []
+        for record in records:
+            if start <= record["t"] <= end:
+                balls = select_balls(record)
+                if balls:
+                    samples.append((float(record["t"]), balls[0]["court"]))
+        max_speed = 0.0
+        for (t0, p0), (t1, p1) in zip(samples, samples[1:]):
+            gap = t1 - t0
+            if gap <= 0 or gap > 0.3:
+                continue
+            speed = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / gap
+            if 0 < speed <= 45:
+                max_speed = max(max_speed, speed)
+        ball_pct = len(samples) / max(1, sum(1 for r in records if start <= r["t"] <= end))
+        contact_count = len(group)
+        score = round(
+            50.0
+            + 20.0 * min(1.0, ball_pct / 0.5)
+            + 20.0 * min(1.0, contact_count / 5.0)
+            + 10.0 * min(1.0, max_speed / 25.0),
+            1,
+        )
+        if score < 55.0:
+            continue
+        windows.append(
+            {
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "duration": round(end - start, 2),
+                "score": score,
+                "max_speed": round(max_speed, 1),
+                "ball_pct": round(ball_pct, 3),
+                "contacts": contact_count,
+                "crossings": 0,
+                "min_y": None,
+                "source": "contact",
+            }
+        )
+    return windows
+
+
 def cut_clip(video_path: Path, start: float, end: float, output_path: Path) -> bool:
     command = [
         "ffmpeg",
@@ -252,6 +325,32 @@ def main() -> int:
         f"ranker_peso={ranker_weight}"
     )
 
+    contacts_path = job_dir / "contacts.json"
+    contacts_payload = []
+    if contacts_path.is_file():
+        contacts_payload = json.loads(contacts_path.read_text(encoding="utf-8"))
+    contact_times = [float(contact["t"]) for contact in contacts_payload]
+    records_for_duration = [
+        json.loads(line)
+        for line in ball_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    duration = float(records_for_duration[-1]["t"]) if records_for_duration else 0.0
+    contact_candidates = (
+        contact_windows(contacts_payload, records_for_duration, duration)
+        if contacts_payload
+        else []
+    )
+    use_audio = (
+        not args.no_audio
+        and (match["whistle_mode"] if "whistle_mode" in match.keys() else "with")
+        != "without"
+    )
+    print(
+        f"apito={'sim' if use_audio else 'nao'} "
+        f"janelas_contato={len(contact_candidates)}"
+    )
+
     speed_windows = windows_from_ball(
         ball_path,
         threshold=args.threshold,
@@ -263,7 +362,7 @@ def main() -> int:
 
     audio_windows: list[dict] = []
     rallies_path = job_dir / (args.rallies or "rallies_audio.json")
-    if not args.no_audio and rallies_path.is_file():
+    if use_audio and rallies_path.is_file():
         for rally in json.loads(rallies_path.read_text(encoding="utf-8")):
             if float(rally.get("score", 0.0)) < args.min_score:
                 continue
@@ -286,14 +385,36 @@ def main() -> int:
                 }
             )
 
-    if audio_windows:
-        # Com apito disponível, a janela de áudio manda; janelas de velocidade
-        # podem se esticar por minutos quando o track erra e viram falsos rallies.
-        windows = sorted(audio_windows, key=lambda item: item["start"])
-    else:
+    windows: list[dict] = sorted(audio_windows, key=lambda item: item["start"])
+
+    def add_complement(candidate: dict, max_overlap: float = 1.5) -> None:
+        for existing in windows:
+            overlap = max(
+                0.0,
+                min(candidate["end"], existing["end"])
+                - max(candidate["start"], existing["start"]),
+            )
+            if overlap > max_overlap:
+                return
+        windows.append(candidate)
+
+    for candidate in sorted(contact_candidates, key=lambda item: item["start"]):
+        if float(candidate.get("ball_pct", 0.0)) < min_ball_pct:
+            continue
+        add_complement(candidate)
+
+    for window in speed_windows:
+        duration_window = float(window["end"]) - float(window["start"])
+        if duration_window > 20.0 or float(window["score"]) < 55.0:
+            continue
+        window["source"] = "speed"
+        add_complement(window)
+
+    if not windows:
         for window in speed_windows:
             window["source"] = "speed"
         windows = speed_windows
+    windows.sort(key=lambda item: item["start"])
 
     rejections = list_clip_rejections(args.match_id)
     if rejections:

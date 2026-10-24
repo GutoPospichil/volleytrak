@@ -100,3 +100,23 @@ Projeto pessoal em desenvolvimento. Dependências e modelos mantêm suas licenç
 - **Outro**: use a observação para explicar.
 
 Tempo morto e bola no chão agora têm o mesmo peso; corte errado e rally pela metade também. O histórico antigo é convertido para essas categorias.
+
+
+## Jogo com apito x sem apito
+
+No cadastro/upload do vídeo escolha:
+
+- **Jogo com apito**: usa apitos como candidatos principais e complementa com bola/contatos nos trechos sem apito.
+- **Jogo sem apito**: não procura apito; monta rallies por contatos e bola. Indicado para treinos, vídeos sem áudio ou quadras com vários jogos/apitos simultâneos.
+
+No modo com apito, o apito não é mais o único gatilho: janelas de contato são adicionadas nos vãos, com deduplicação e limite de duração.
+
+## Submotivo de corte errado
+
+Ao escolher **Corte errado / rally pela metade**, escolha também:
+
+- **Clipe começa depois do saque**
+- **Clipe acaba antes do ponto**
+- **As duas coisas**
+
+Isso ajusta o pré-roll/pós-roll sem precisar escrever a observação.

@@ -191,6 +191,13 @@
       <span class="badge manual">{{ rejection_labels.get(reason, reason) }}: {{ count }}</span>
       {% endfor %}
     </div>
+    {% if rejection_detail_counts %}
+    <div class="feedback-chips">
+      {% for detail, count in rejection_detail_counts.items() %}
+      <span class="badge auto">{{ rejection_details.get(detail, detail) }}: {{ count }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% if feedback_profile %}
     <p class="muted small">
       Aprendizado aplicado na próxima geração: pré-roll {{ feedback_profile.trim.pre_roll }}s,
@@ -264,6 +271,14 @@
       <label>Motivo
         <select id="reject-reason">
           {% for value, label in rejection_labels.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="reject-detail-wrap" hidden>Detalhe do corte
+        <select id="reject-detail">
+          <option value="">Selecione</option>
+          {% for value, label in rejection_details.items() %}
           <option value="{{ value }}">{{ label }}</option>
           {% endfor %}
         </select>
@@ -514,12 +529,22 @@ async function updateClipStatus(clipId, status) {
 let rejectClipId = null;
 const rejectModal = document.getElementById('reject-modal');
 const rejectReason = document.getElementById('reject-reason');
+const rejectDetailWrap = document.getElementById('reject-detail-wrap');
+const rejectDetail = document.getElementById('reject-detail');
 const rejectNote = document.getElementById('reject-note');
+
+function updateRejectDetail() {
+  const show = rejectReason.value === 'bad_cut';
+  rejectDetailWrap.hidden = !show;
+  if (!show) rejectDetail.value = '';
+}
 
 function openReject(clipId) {
   rejectClipId = clipId;
   rejectReason.value = 'dead_time';
+  rejectDetail.value = '';
   rejectNote.value = '';
+  updateRejectDetail();
   rejectModal.hidden = false;
   rejectReason.focus();
 }
@@ -536,7 +561,7 @@ async function submitReject() {
   const response = await fetch(`/api/clips/${rejectClipId}/reject`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason: rejectReason.value, note: rejectNote.value })
+    body: JSON.stringify({ reason: rejectReason.value, detail: rejectDetail.value, note: rejectNote.value })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -547,6 +572,7 @@ async function submitReject() {
   location.reload();
 }
 
+rejectReason.addEventListener('change', updateRejectDetail);
 document.getElementById('close-reject').addEventListener('click', closeReject);
 document.getElementById('cancel-reject').addEventListener('click', closeReject);
 document.getElementById('confirm-reject').addEventListener('click', submitReject);
