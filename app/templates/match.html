@@ -186,10 +186,12 @@
     </div>
   </div>
   <label class="check-line"><input type="checkbox" id="use-gaps" checked> Reavaliar minutos sem clipes no mapa de calor</label>
+  <label class="check-line"><input type="checkbox" id="use-activity" checked> Ignorar quadra vazia/parada</label>
   <p class="muted small">Processar clipes roda o pipeline completo (bola, áudio/contatos e rallies). Gerar novamente usa as detecções atuais, o perfil aprendido e o ranker, preserva os salvos e recria trechos de "corte errado" com o pré/pós-roll ajustado.</p>
   <details class="learned-note">
     <summary>O que é considerado ao gerar novamente</summary>
     <ul class="muted small">
+      <li>Quadra vazia/parada é descartada pelo movimento dentro da quadra.</li>
       <li>Perfil aprendido com {{ rejection_total }} exclusão(ões), incluindo os submotivos de corte errado.</li>
       <li>Ranker treinado com clipes salvos e excluídos, quando há dados suficientes.</li>
       <li>Clipes salvos são preservados; trechos de corte errado podem voltar como "Recuperado".</li>
@@ -1566,6 +1568,7 @@ const generateClips = document.getElementById('generate-clips');
 if (generateClips) {
   generateClips.addEventListener('click', async () => {
     const useGaps = document.getElementById('use-gaps');
+    const useActivity = document.getElementById('use-activity');
     const gapMessage = useGaps && useGaps.checked
       ? ' Também vou reavaliar os minutos sem clipes no mapa de calor.'
       : '';
@@ -1573,8 +1576,11 @@ if (generateClips) {
     const before = [...document.querySelectorAll('.clip-card')].map((card) => card.dataset.clipId).sort().join(',');
     generateClips.disabled = true;
     generateClips.textContent = 'Gerando...';
-    const gapsQuery = useGaps && !useGaps.checked ? '?use_gaps=0' : '?use_gaps=1';
-    const response = await fetch(`/api/matches/${matchId}/clips/generate${gapsQuery}`, { method: 'POST' });
+    const params = new URLSearchParams({
+      use_gaps: useGaps && useGaps.checked ? '1' : '0',
+      use_activity: useActivity && useActivity.checked ? '1' : '0'
+    });
+    const response = await fetch(`/api/matches/${matchId}/clips/generate?${params.toString()}`, { method: 'POST' });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       alert(error.detail || 'Não foi possível iniciar a geração dos clipes.');

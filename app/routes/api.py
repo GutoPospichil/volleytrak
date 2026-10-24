@@ -937,6 +937,7 @@ def generate_clips(
     match_id: int,
     use_gaps: bool = True,
     max_gap_clips: int = 24,
+    use_activity: bool = True,
 ):
     row = _require_match(match_id)
     if row["status"] == "processing":
@@ -955,6 +956,8 @@ def generate_clips(
         "--gap-clips",
         str(max_gap_clips if use_gaps else 0),
     ]
+    if not use_activity:
+        command.append("--no-activity")
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)

@@ -235,3 +235,16 @@ Quando você alonga um clipe e ele passa a cobrir parte de outro clipe, o app av
 - se confirmar, o outro clipe é excluído com motivo **Duplicado**, entra no aprendizado com peso menor e o app segue para o próximo da revisão.
 
 Se preferir revisar manualmente, basta cancelar. A detecção usa sobreposição de pelo menos 2 segundos ou 50% do clipe menor.
+
+## Quadra vazia / atletas parados
+
+O pipeline agora mede o **movimento dentro da quadra** em aproximadamente 1 amostra por segundo:
+
+- usa os 4 pontos da calibração para criar uma máscara da quadra;
+- compara frames consecutivos e calcula o movimento médio na área da quadra;
+- clipes com movimento médio abaixo de **4** são descartados;
+- o resultado fica em `data/jobs/match-<id>/activity.json` e é reaproveitado nas próximas gerações;
+- na primeira vez leva cerca de 80 segundos para uma partida de 52 minutos;
+- a opção **Ignorar quadra vazia/parada** fica marcada por padrão ao gerar novamente.
+
+Isso remove principalmente os trechos com quadra vazia ou todos parados. Tempo morto com jogadores se movimentando, comemoração ou banco agitado ainda pode passar; nesses casos o feedback de **Tempo morto** continua sendo o ajuste correto.

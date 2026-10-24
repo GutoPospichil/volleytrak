@@ -141,7 +141,19 @@ def main() -> int:
                     "Modo sem apito: usando bola e contatos...",
                 )
 
-            update_progress(args.match_id, 86, "Cortando clipes...")
+            update_progress(args.match_id, 82, "Medindo atividade visual da quadra...")
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pipeline.activity",
+                    "--match-id",
+                    str(args.match_id),
+                ],
+                log_file,
+            )
+
+            update_progress(args.match_id, 88, "Cortando clipes...")
             clips_command = [
                 sys.executable,
                 "-m",
@@ -209,6 +221,7 @@ def main() -> int:
             result = {
                 "summary": summary,
                 "warnings": [
+                    "Atividade visual da quadra aplicada: trechos vazios/parados foram descartados.",
                     "Fluxo focado em clipes: sem pipeline de pessoas e sem vídeo anotado.",
                     "Áudio, VballNet, contatos e o perfil/ranker aprendidos foram aplicados.",
                     "Clipes salvos e rejeições anteriores foram preservados; revise os novos.",
@@ -218,6 +231,7 @@ def main() -> int:
                     "whistles": "whistles.json",
                     "contacts": "contacts.json",
                     "rallies_audio": "rallies_audio.json",
+                    "activity": "activity.json",
                     "log": "clip_job.log",
                 },
                 "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

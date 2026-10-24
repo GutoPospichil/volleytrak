@@ -571,6 +571,9 @@ def main() -> int:
     parser.add_argument("--ball", default="")
     parser.add_argument("--rallies", default="")
     parser.add_argument("--no-audio", action="store_true")
+    parser.add_argument("--no-activity", action="store_true")
+    parser.add_argument("--activity", default="activity.json")
+    parser.add_argument("--min-court-motion", type=float, default=4.0)
     parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
 
@@ -591,6 +594,24 @@ def main() -> int:
         print("passagem de bola não encontrada; rode pipeline.vballnet ou ball_pass primeiro")
         return 1
     print(f"track={ball_path.name}")
+
+    from pipeline.activity import build_activity, filter_windows, load_activity
+
+    activity = None
+    if not args.no_activity:
+        activity_path = job_dir / args.activity
+        activity = load_activity(activity_path)
+        if activity is None:
+            print("atividade visual ausente; calculando agora...")
+            try:
+                build_activity(
+                    args.match_id,
+                    output=str(activity_path),
+                    sample_fps=1.0,
+                )
+                activity = load_activity(activity_path)
+            except Exception as exc:
+                print(f"[aviso] filtro de quadra vazia indisponivel: {exc}")
 
     calibration = json.loads(match["calibration"]) if match["calibration"] else {}
     mode = calibration.get("mode", "full")
@@ -784,6 +805,14 @@ def main() -> int:
     if split_count:
         print(f"janelas longas divididas: {split_count}")
 
+    if activity:
+        windows, activity_dropped = filter_windows(
+            windows,
+            activity,
+            min_mean=args.min_court_motion,
+        )
+        print(f"ignorados por quadra vazia/parada: {activity_dropped}")
+
     saved_clips = list_clips(args.match_id, "saved")
     if saved_clips:
         filtered = []
@@ -908,6 +937,9 @@ def main() -> int:
                 "ranker_score",
                 "original_start",
                 "original_end",
+                "activity_mean",
+                "activity_max",
+                "activity_active_pct",
             )
             if window.get(key) is not None
         }
