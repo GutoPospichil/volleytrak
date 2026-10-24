@@ -97,3 +97,32 @@ class ClipEditProfileTest(unittest.TestCase):
                     )
                 profile = feedback_module.build_profile_for_match(match_id)
                 self.assertGreater(profile["trim"]["pre_roll"], 2.5)
+import unittest
+
+from pipeline.clips import overlapping_clips
+
+
+class OverlapDetectionTest(unittest.TestCase):
+    def test_flags_next_clip_covered_by_extension(self):
+        clips = [
+            {"id": 1, "start": 100.0, "end": 115.0, "status": "saved", "starred": 0, "score": 90.0},
+            {"id": 2, "start": 114.0, "end": 124.0, "status": "new", "starred": 0, "score": 80.0},
+            {"id": 3, "start": 130.0, "end": 140.0, "status": "new", "starred": 0, "score": 70.0},
+        ]
+        overlaps = overlapping_clips(clips, 1, 98.0, 118.0)
+        self.assertEqual([item["id"] for item in overlaps], [2])
+        self.assertAlmostEqual(overlaps[0]["overlap"], 4.0)
+        self.assertAlmostEqual(overlaps[0]["coverage"], 0.4)
+
+    def test_does_not_flag_small_touch(self):
+        clips = [
+            {"id": 1, "start": 100.0, "end": 115.0, "status": "saved", "starred": 0, "score": 90.0},
+            {"id": 2, "start": 114.8, "end": 124.0, "status": "new", "starred": 0, "score": 80.0},
+        ]
+        self.assertEqual(overlapping_clips(clips, 1, 100.0, 115.2), [])
+
+    def test_ignores_edited_clip_itself(self):
+        clips = [
+            {"id": 1, "start": 100.0, "end": 115.0, "status": "saved", "starred": 0, "score": 90.0},
+        ]
+        self.assertEqual(overlapping_clips(clips, 1, 90.0, 120.0), [])

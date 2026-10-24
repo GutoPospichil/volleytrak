@@ -501,7 +501,7 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
     new_thumb = clips_dir / f"edited-{token}.jpg"
 
     from pipeline.clip_score import load_json, load_jsonl, score_clip
-    from pipeline.clips import cut_clip, make_thumb
+    from pipeline.clips import cut_clip, make_thumb, overlapping_clips
 
     if not cut_clip(video_path, new_start, new_end, new_path):
         raise HTTPException(status_code=500, detail="Não foi possível recortar o clipe")
@@ -622,6 +622,12 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
             pass
 
     updated = get_clip(clip_id)
+    overlaps = overlapping_clips(
+        list_clips(match_id),
+        clip_id,
+        new_start,
+        new_end,
+    )
     return {
         "ok": True,
         "clip": dict(updated) if updated is not None else None,
@@ -636,6 +642,7 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
         },
         "reason": reason,
         "detail": detail,
+        "overlaps": overlaps,
     }
 
 

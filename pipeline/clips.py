@@ -458,6 +458,45 @@ def recovered_windows(
     return unique
 
 
+def overlapping_clips(
+    clips: list,
+    clip_id: int,
+    start: float,
+    end: float,
+    min_coverage: float = 0.5,
+    min_overlap: float = 2.0,
+) -> list[dict]:
+    duration = max(0.1, float(end) - float(start))
+    result: list[dict] = []
+    for other in clips:
+        if int(other["id"]) == int(clip_id):
+            continue
+        other_start = float(other["start"])
+        other_end = float(other["end"])
+        overlap = max(0.0, min(float(end), other_end) - max(float(start), other_start))
+        if overlap < 0.5:
+            continue
+        other_duration = max(0.1, other_end - other_start)
+        coverage = overlap / min(duration, other_duration)
+        if coverage < min_coverage and overlap < min_overlap:
+            continue
+        result.append(
+            {
+                "id": int(other["id"]),
+                "start": round(other_start, 2),
+                "end": round(other_end, 2),
+                "duration": round(other_duration, 2),
+                "status": other["status"],
+                "starred": bool(other["starred"]),
+                "score": float(other["score"] or 0.0),
+                "overlap": round(overlap, 2),
+                "coverage": round(coverage, 3),
+            }
+        )
+    result.sort(key=lambda item: item["start"])
+    return result
+
+
 def cut_clip(video_path: Path, start: float, end: float, output_path: Path) -> bool:
     command = [
         "ffmpeg",

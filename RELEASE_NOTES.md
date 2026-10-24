@@ -1,15 +1,18 @@
-# VolleyTrak 0.3.8 beta
+# VolleyTrak 0.3.9 beta
 
-## Fluxo após editar o corte
-- Ao salvar a edição de um clipe **não verificado**, ele vai para **Salvos** e o app abre o próximo clipe da revisão.
-- Se **Avançar após salvar/excluir** estiver desmarcado, a janela fecha em vez de ficar presa no clipe editado.
-- Ao editar um clipe que já estava salvo, a janela fecha após salvar.
-- Um aviso rápido mostra o score gerado → editado e o ganho de qualidade.
+## Duplicados após edição
+- Ao alongar um clipe e cobrir parte de outro, o app detecta a sobreposição na hora.
+- Mostra o trecho, o status (salvo/não verificado) e a porcentagem coberta.
+- Pergunta se deseja marcar o clipe sobreposto como **Duplicado**.
+- Se confirmar, o duplicado é excluído e o app segue para o próximo clipe.
+- Duplicados ficam registrados no banco, mas com **peso 0 no ranker**: são redundância, não conteúdo ruim, e não devem ensinar o modelo a rejeitar rallies parecidos.
+- Se cancelar, nada é apagado.
+- Critério: sobreposição de pelo menos 2 segundos ou 50% do clipe menor.
 
-## Base da 0.3.7
-- Modal de edição em duas colunas, com vídeo menor e todos os controles visíveis sem rolagem em telas normais.
-- Edição por **-2s / -1s / -0.5s / +0.5s / +1s / +2s**, tempo atual e pré-visualização.
-- Edição entra no aprendizado e aparece em **Aprendizado → Edições manuais**.
+## Base da 0.3.8
+- Após editar e salvar um clipe não verificado, ele vai para Salvos e a revisão avança para o próximo.
+- Editar um clipe já salvo fecha a janela após salvar.
+- Aviso rápido com score gerado → editado.
 
 Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
 Windows 10/11 x64, driver NVIDIA e ~8 GB livres.

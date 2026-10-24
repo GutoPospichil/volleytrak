@@ -218,6 +218,11 @@ def init_db() -> None:
         if "features" not in rejection_columns:
             conn.execute("ALTER TABLE clip_rejections ADD COLUMN features TEXT")
     backfill_learning_examples()
+    with db() as conn:
+        conn.execute(
+            "UPDATE learning_examples SET weight = 0.0 "
+            "WHERE label = 'bad' AND reason IN ('duplicate', 'duplicado')"
+        )
 
 
 def _load_features(value: Any) -> dict | None:

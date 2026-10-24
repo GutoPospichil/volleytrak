@@ -47,7 +47,7 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     with db() as conn:
         try:
             examples = conn.execute(
-                "SELECT features, duration, source, label, weight FROM learning_examples"
+                "SELECT features, duration, source, label, weight, reason FROM learning_examples"
             ).fetchall()
         except sqlite3.OperationalError:
             examples = []
@@ -58,6 +58,13 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                     continue
                 if row["label"] not in {"good", "bad"}:
                     continue
+                weight = float(row["weight"] or 1.0)
+                if row["label"] == "bad" and learning_example_weight(
+                    "bad", row["reason"] or ""
+                ) == 0.0:
+                    weight = 0.0
+                if weight <= 0.0:
+                    continue
                 rows.append(
                     (
                         feature_vector(
@@ -66,7 +73,7 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                             row["source"] or "",
                         ),
                         1 if row["label"] == "good" else 0,
-                        float(row["weight"] or 1.0),
+                        weight,
                     )
                 )
         else:
@@ -94,11 +101,14 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 payload = _payload(row)
                 if not payload:
                     continue
+                weight = learning_example_weight("bad", row["reason"] or "")
+                if weight <= 0.0:
+                    continue
                 rows.append(
                     (
                         feature_vector(payload, float(row["duration"]), ""),
                         0,
-                        learning_example_weight("bad", row["reason"] or ""),
+                        weight,
                     )
                 )
     if not rows:

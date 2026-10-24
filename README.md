@@ -168,7 +168,7 @@ Cada clipe salvo ou excluído vira uma linha com:
 - peso do exemplo;
 - partida, trecho e data.
 
-Pesos atuais: estrela = 2, salvo = 1, duplicado = 0.5, corte errado = 0.8, tempo morto/fora de rally = 1.2. O ranker treina com essa tabela, então cada revisão é reaproveitada em todas as próximas gerações.
+Pesos atuais: estrela = 2, salvo = 1, duplicado = 0 (não entra no ranker), corte errado = 0.8, tempo morto/fora de rally = 1.2. O ranker treina com essa tabela, então cada revisão é reaproveitada em todas as próximas gerações.
 
 Na página **Aprendizado** você pode:
 
@@ -225,3 +225,13 @@ Ao salvar, o app recorta o vídeo original de novo, atualiza a miniatura, o temp
 - a página **Aprendizado → Edições manuais** mostra o **score gerado**, a **qualidade original → editada** e o quanto o início/fim mudou.
 
 O score gerado é o score do candidato que apareceu na revisão. A qualidade original/editada usa a mesma fórmula nos dois cortes, para comparar de forma justa o efeito do ajuste. O mapa de calor é atualizado ao recarregar a página.
+
+### Sobreposição depois da edição
+
+Quando você alonga um clipe e ele passa a cobrir parte de outro clipe, o app avisa na hora:
+
+- mostra o trecho sobreposto, o status (salvo/não verificado) e a porcentagem coberta;
+- pergunta se deseja marcar como **duplicado**;
+- se confirmar, o outro clipe é excluído com motivo **Duplicado**, entra no aprendizado com peso menor e o app segue para o próximo da revisão.
+
+Se preferir revisar manualmente, basta cancelar. A detecção usa sobreposição de pelo menos 2 segundos ou 50% do clipe menor.
