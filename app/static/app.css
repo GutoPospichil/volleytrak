@@ -1124,3 +1124,76 @@ video {
   padding: 4px 8px;
   font-size: 12px;
 }
+
+/* Modal de edição: layout compacto para caber sem rolagem */
+.edit-box {
+  width: min(1040px, 96vw);
+  max-height: calc(100vh - 28px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.edit-video-wrap {
+  min-width: 0;
+}
+
+.edit-video-wrap video {
+  width: 100%;
+  max-height: calc(100vh - 130px);
+  object-fit: contain;
+  border-radius: 8px;
+  background: #000;
+}
+
+.edit-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.edit-controls p {
+  margin: 0;
+}
+
+.edit-controls .edit-grid,
+.edit-controls .edit-nudges,
+.edit-controls .edit-actions {
+  margin-top: 0;
+}
+
+.edit-controls .check-line {
+  margin: 0;
+}
+
+.edit-controls .actions {
+  margin-top: 2px;
+}
+
+.edit-controls #edit-status:empty {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .edit-box {
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    padding: 10px;
+  }
+
+  .edit-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-video-wrap video {
+    max-height: 32vh;
+  }
+}
