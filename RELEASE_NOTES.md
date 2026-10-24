@@ -1,17 +1,15 @@
-# VolleyTrak 0.3.2 beta
+# VolleyTrak 0.3.3 beta
 
-- Motivos de exclusão simplificados:
-  - Tempo morto / bola no chão
-  - Fora de rally (aquecimento/treino)
-  - Corte errado / rally pela metade
-  - Duplicado
-  - Outro
-- Tempo morto e bola no chão agora têm o mesmo peso.
-- Corte errado e rally pela metade agora têm o mesmo peso e aumentam pré/pós-roll.
-- Histórico antigo é convertido para as novas categorias.
-- Mapa de clipes na timeline com minutos sem clipes.
-- Processar clipes em um botão, sem vídeo anotado.
-- Clipes longos divididos; miniaturas no momento ativo; horário abre o vídeo original.
+- Novo cadastro: **Jogo com apito** ou **Jogo sem apito**.
+- Sem apito: o vídeo não é analisado por áudio; rallies são montados por contatos e bola.
+- Com apito: apito + complemento por contatos/bola nos vãos, com deduplicação.
+- Motivo **Corte errado / rally pela metade** com submotivos:
+  - clipe começa depois do saque
+  - clipe acaba antes do ponto
+  - as duas coisas
+- O pré/pós-roll é ajustado pelo submotivo, sem escrever observação.
+- Motivos simplificados: tempo morto/bola no chão, fora de rally, corte errado/rally pela metade, duplicado, outro.
+- Mapa de clipes e horário clicável continuam.
 
 Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
 Windows 10/11 x64, driver NVIDIA e ~8 GB livres.
