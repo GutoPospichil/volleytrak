@@ -500,6 +500,7 @@
       </div>
     </div>
   </div>
+  <div id="app-toast" class="app-toast" hidden></div>
 {% endblock %}
 
 {% block scripts %}
@@ -756,6 +757,16 @@ let editClipId = null;
 let editOldStart = null;
 let editOldEnd = null;
 let editPreviewStop = null;
+const appToast = document.getElementById('app-toast');
+let appToastTimer = null;
+
+function showToast(message) {
+  if (!appToast) return;
+  appToast.textContent = message;
+  appToast.hidden = false;
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => { appToast.hidden = true; }, 4500);
+}
 
 if (autoAdvanceToggle) {
   autoAdvanceToggle.checked = localStorage.getItem('vt-auto-advance') !== '0';
@@ -1064,6 +1075,7 @@ function applyEditResult(data) {
   }
   const clip = data.clip;
   const wasSaved = card.dataset.clipStatus === 'saved';
+  const next = wasSaved ? null : nextCardAfter(card);
   const visibleScore = clip.status === 'saved' && clip.saved_score !== null ? clip.saved_score : clip.score;
   card.dataset.clipStart = clip.start;
   card.dataset.clipEnd = clip.end;
@@ -1108,18 +1120,19 @@ function applyEditResult(data) {
   }
   if (clip.status === 'saved' && !wasSaved) moveCard(card, 'saved');
   else card.dataset.clipStatus = clip.status;
+  const fair = Number(data.scores.fair_delta);
+  const visible = Number(data.scores.visible_delta);
+  showToast(
+    `Corte ${clip.status === 'saved' ? 'editado e salvo' : 'editado'}: ` +
+    `score gerado ${Number(data.scores.generated).toFixed(1)} → editado ${Number(data.scores.edited_quality).toFixed(1)} ` +
+    `(${fair >= 0 ? '+' : ''}${fair.toFixed(1)} de qualidade; ` +
+    `${visible >= 0 ? '+' : ''}${visible.toFixed(1)} vs score gerado).`
+  );
   closeEdit();
-  openClip(card);
-  if (clipEditNote) {
-    const fair = Number(data.scores.fair_delta);
-    const visible = Number(data.scores.visible_delta);
-    clipEditNote.hidden = false;
-    clipEditNote.textContent =
-      `Score gerado ${Number(data.scores.generated).toFixed(1)} · ` +
-      `original ${Number(data.scores.original_quality).toFixed(1)} · ` +
-      `editado ${Number(data.scores.edited_quality).toFixed(1)} ` +
-      `(${fair >= 0 ? '+' : ''}${fair.toFixed(1)} no corte; ` +
-      `${visible >= 0 ? '+' : ''}${visible.toFixed(1)} vs score gerado).`;
+  if (!wasSaved && autoAdvanceEnabled() && next) {
+    openClip(next);
+  } else {
+    closeClip();
   }
 }
 
