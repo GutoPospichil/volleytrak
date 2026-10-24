@@ -83,6 +83,13 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             feedback_profile = json.loads(profile_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             feedback_profile = None
+    ranker_info = None
+    ranker_path = JOB_DIR.parent / "feedback_ranker.json"
+    if ranker_path.is_file():
+        try:
+            ranker_info = json.loads(ranker_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            ranker_info = None
     return templates.TemplateResponse(
         request,
         "match.html",
@@ -107,6 +114,7 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             "rejection_details": CLIP_REJECTION_DETAIL_LABELS,
             "rejection_detail_counts": dict(rejection_detail_counts),
             "feedback_profile": feedback_profile,
+            "ranker_info": ranker_info,
         },
     )
 

@@ -299,10 +299,12 @@ def clear_clips(match_id: int) -> None:
 def clear_unreviewed_clips(match_id: int) -> list[sqlite3.Row]:
     with db() as conn:
         rows = conn.execute(
-            "SELECT * FROM clips WHERE match_id = ? AND status = 'new'", (match_id,)
+            "SELECT * FROM clips WHERE match_id = ? AND status = 'new' AND source != 'manual'",
+            (match_id,),
         ).fetchall()
         conn.execute(
-            "DELETE FROM clips WHERE match_id = ? AND status = 'new'", (match_id,)
+            "DELETE FROM clips WHERE match_id = ? AND status = 'new' AND source != 'manual'",
+            (match_id,),
         )
         return rows
 

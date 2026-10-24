@@ -23,6 +23,7 @@ from ..config import (
 from collections import Counter
 
 from ..db import (
+    add_clip,
     add_clip_rejection,
     add_event,
     add_player,
@@ -50,6 +51,7 @@ from ..schemas import (
     ClipStarIn,
     ClipStatusIn,
     LocalVideoIn,
+    ManualClipIn,
     ManualEventIn,
     PlayerIn,
 )
@@ -345,6 +347,82 @@ def get_clip_thumb(match_id: int, clip_id: int):
     return FileResponse(path, media_type="image/jpeg")
 
 
+@router.post("/matches/{match_id}/clips/manual")
+def create_manual_clip(match_id: int, payload: ManualClipIn):
+    row = _require_match(match_id)
+    if row["status"] == "processing":
+        raise HTTPException(
+            status_code=409, detail="Aguarde o processamento terminar para cortar manualmente"
+        )
+    video_path = Path(row["video_path"])
+    if not video_path.is_file():
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo não encontrado")
+
+    start = round(float(payload.start), 2)
+    end = round(float(payload.end), 2)
+    duration = round(end - start, 2)
+    job_dir = JOB_DIR / f"match-{match_id}"
+    clips_dir = job_dir / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    token = uuid4().hex[:10]
+    clip_path = clips_dir / f"manual-{token}.mp4"
+    thumb_path = clips_dir / f"manual-{token}.jpg"
+
+    from pipeline.clips import cut_clip, make_thumb
+
+    if not cut_clip(video_path, start, end, clip_path):
+        raise HTTPException(status_code=500, detail="Não foi possível cortar o trecho selecionado")
+    thumb_seek = min(6.0, max(1.5, duration * 0.35))
+    make_thumb(clip_path, thumb_path, seek=thumb_seek)
+
+    features: dict = {
+        "manual": True,
+        "duration": duration,
+        "score": 100.0,
+    }
+    try:
+        from pipeline.clip_score import load_json, load_jsonl, stats_for_window
+
+        ball_path = job_dir / "ball_vballnet.jsonl"
+        if not ball_path.is_file():
+            ball_path = job_dir / "ball_dfine.jsonl"
+        records = load_jsonl(ball_path, [])
+        if records:
+            stats = stats_for_window(records, start, end)
+            features["ball_pct"] = round(float(stats["ball_pct"]), 4)
+            features["max_speed"] = round(float(stats["max_speed"]), 2)
+        contacts = load_json(job_dir / "contacts.json", [])
+        if contacts:
+            features["contacts"] = sum(
+                1
+                for contact in contacts
+                if start <= float(contact.get("t", -1.0)) <= end
+            )
+    except Exception:
+        pass
+
+    clip_id = add_clip(
+        match_id,
+        start=start,
+        end=end,
+        duration=duration,
+        path=str(clip_path),
+        thumb=str(thumb_path) if thumb_path.is_file() else None,
+        score=100.0,
+        status="saved",
+        source="manual",
+        features=features,
+    )
+    _invalidate_highlight(match_id)
+    return {
+        "ok": True,
+        "id": clip_id,
+        "start": start,
+        "end": end,
+        "duration": duration,
+    }
+
+
 @router.patch("/clips/{clip_id}")
 def update_clip_status(clip_id: int, payload: ClipStatusIn):
     clip = get_clip(clip_id)
@@ -596,12 +674,28 @@ def process_clips(match_id: int):
 
 
 @router.post("/matches/{match_id}/clips/generate")
-def generate_clips(match_id: int):
-    _require_match(match_id)
+def generate_clips(
+    match_id: int,
+    use_gaps: bool = True,
+    max_gap_clips: int = 24,
+):
+    row = _require_match(match_id)
+    if row["status"] == "processing":
+        raise HTTPException(
+            status_code=409, detail="Já existe processamento em andamento"
+        )
     job_dir = JOB_DIR / f"match-{match_id}"
     job_dir.mkdir(parents=True, exist_ok=True)
     log_file = (job_dir / "clips.log").open("ab")
-    command = [sys.executable, "-m", "pipeline.clips", "--match-id", str(match_id)]
+    command = [
+        sys.executable,
+        "-m",
+        "pipeline.clips",
+        "--match-id",
+        str(match_id),
+        "--gap-clips",
+        str(max_gap_clips if use_gaps else 0),
+    ]
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)

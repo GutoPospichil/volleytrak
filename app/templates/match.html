@@ -8,6 +8,11 @@
     <p class="muted">
       {{ match.opponent or "Sem adversário" }}{% if match.played_on %} · {{ match.played_on }}{% endif %}
       · <span class="badge {{ match.status }}">{{ status_labels.get(match.status, match.status) }}</span>
+      {% if match.whistle_mode == "without" %}
+      <span class="badge auto">Sem apito</span>
+      {% else %}
+      <span class="badge manual">Com apito</span>
+      {% endif %}
     </p>
   </div>
   <div class="actions">
@@ -31,6 +36,25 @@
     <h2>Vídeo</h2>
     <video id="player" controls preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
     <p class="muted small">Tempo atual: <span id="current-time">0.0</span>s</p>
+    <div class="manual-cut" id="manual-cut">
+      <div class="card-head">
+        <strong>Corte manual</strong>
+        <span id="cut-status" class="muted small">Nenhum trecho marcado</span>
+      </div>
+      <div class="manual-cut-actions">
+        <button id="mark-start" class="button secondary small" type="button">Marcar início</button>
+        <button id="mark-end" class="button secondary small" type="button">Marcar fim</button>
+        <button id="preview-cut" class="button ghost small" type="button" disabled>Pré-visualizar</button>
+        <button id="clear-cut" class="button ghost small" type="button" disabled>Limpar</button>
+      </div>
+      <p class="manual-cut-times">
+        <span>Início <strong id="cut-start-label">--:--</strong></span>
+        <span>Fim <strong id="cut-end-label">--:--</strong></span>
+        <span>Duração <strong id="cut-duration-label">--</strong></span>
+      </p>
+      <button id="create-manual-clip" class="button primary small" type="button" disabled>Criar clipe manual</button>
+      <p id="manual-cut-msg" class="muted small">Clique num bloco ou vão do mapa de calor para posicionar o vídeo; um trecho de 15s já vem marcado e pode ser ajustado.</p>
+    </div>
   </section>
 
   <section class="card">
@@ -42,6 +66,21 @@
     <p class="warn small">Quadra não calibrada. Sem isso, posições não são convertidas para metros.</p>
     {% endif %}
     <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Abrir calibração</a>
+
+    <p class="muted small">Modo de áudio: <strong>{{ "Jogo sem apito" if match.whistle_mode == "without" else "Jogo com apito" }}</strong></p>
+    {% if feedback_profile %}
+    {% set trim = feedback_profile.get("trim", {}) %}
+    <hr>
+    <p class="muted small"><strong>Aprendizado aplicado:</strong>
+      pré-roll {{ trim.get("pre_roll", 1.0) }}s ·
+      pós-roll {{ trim.get("post_roll", 1.8) }}s ·
+      velocidade ativa {{ trim.get("active_speed", 2.5) }} m/s ·
+      bola mínima {{ (feedback_profile.get("min_ball_pct", 0.1) * 100)|round(0)|int }}%.
+    </p>
+    {% if ranker_info and ranker_info.get("cv_auc") %}
+    <p class="muted small">Ranker global: AUC {{ "%.3f"|format(ranker_info.get("cv_auc")) }} · {{ ranker_info.get("n_positive", 0) }} salvos / {{ ranker_info.get("n_negative", 0) }} excluídos.</p>
+    {% endif %}
+    {% endif %}
 
     {% if match.result %}
     <hr>
@@ -84,6 +123,13 @@
     {% if clip.starred %}
     <span class="clip-star-badge" title="Clipe excelente">&#9733;</span>
     {% endif %}
+    {% if clip.source == 'manual' %}
+    <span class="clip-source manual">Manual</span>
+    {% elif clip.source == 'gap' %}
+    <span class="clip-source gap">Lacuna</span>
+    {% elif clip.source == 'recovered' %}
+    <span class="clip-source recovered">Recuperado</span>
+    {% endif %}
     {% set start_m = clip.start|int // 60 %}
     {% set start_s = clip.start|int % 60 %}
     {% set end_m = clip.end|int // 60 %}
@@ -122,10 +168,20 @@
     </div>
     <div class="actions">
       <button id="process-clips" class="button primary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Processar clipes</button>
-      <button id="generate-clips" class="button secondary small" type="button">Gerar clipes</button>
+      <button id="generate-clips" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Gerar novamente (aprendizados)</button>
     </div>
   </div>
-  <p class="muted small">Processar clipes roda bola em 30 fps, áudio, contatos e rallies — sem vídeo anotado.</p>
+  <label class="check-line"><input type="checkbox" id="use-gaps" checked> Reavaliar minutos sem clipes no mapa de calor</label>
+  <p class="muted small">Processar clipes roda o pipeline completo (bola, áudio/contatos e rallies). Gerar novamente usa as detecções atuais, o perfil aprendido e o ranker, preserva os salvos e recria trechos de "corte errado" com o pré/pós-roll ajustado.</p>
+  <details class="learned-note">
+    <summary>O que é considerado ao gerar novamente</summary>
+    <ul class="muted small">
+      <li>Perfil aprendido com {{ rejection_total }} exclusão(ões), incluindo os submotivos de corte errado.</li>
+      <li>Ranker treinado com clipes salvos e excluídos, quando há dados suficientes.</li>
+      <li>Clipes salvos são preservados; trechos de corte errado podem voltar como "Recuperado".</li>
+      <li>Minutos sem clipes são reavaliados quando a opção acima está marcada e aparecem como "Lacuna".</li>
+    </ul>
+  </details>
 
   {% if timeline %}
   <div class="timeline-card">
@@ -139,6 +195,8 @@
         <button
           class="timeline-cell level-{{ bin.level }} {{ 'has-saved' if bin.has_saved else '' }}"
           type="button"
+          data-cut-start="{{ bin.start }}"
+          data-cut-end="{{ (bin.start + 15) if (bin.start + 15) < bin.end else bin.end }}"
           data-seek-original="{{ bin.start }}"
           title="{{ bin.label }} · {{ bin.coverage }}% coberto · {{ bin.new }}s novo(s), {{ bin.saved }}s salvo(s)"
           aria-label="Abrir vídeo original em {{ bin.label }}"
@@ -164,7 +222,10 @@
     <div class="timeline-gaps">
       <strong>Minutos sem clipes:</strong>
       {% for gap in timeline.gaps %}
-      <button class="link" type="button" data-seek-original="{{ gap.start }}">{{ gap.start_label }}–{{ gap.end_label }} ({{ gap.duration_label }})</button>
+      <button class="link" type="button"
+        data-cut-start="{{ gap.start }}"
+        data-cut-end="{{ (gap.start + 15) if (gap.start + 15) < gap.end else gap.end }}"
+        data-seek-original="{{ gap.start }}">{{ gap.start_label }}–{{ gap.end_label }} ({{ gap.duration_label }})</button>
       {% endfor %}
     </div>
     {% else %}
@@ -377,7 +438,8 @@ if (player) {
 function seekOriginal(time) {
   if (!player) return;
   player.currentTime = Math.max(0, Number(time) || 0);
-  player.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const videoCard = player.closest('section');
+  (videoCard || player).scrollIntoView({ behavior: 'smooth', block: 'start' });
   player.play().catch(() => {});
 }
 
@@ -387,6 +449,136 @@ document.querySelectorAll('[data-seek-original]').forEach((button) => {
     seekOriginal(button.dataset.seekOriginal);
   });
 });
+
+const cutStatus = document.getElementById('cut-status');
+const cutStartLabel = document.getElementById('cut-start-label');
+const cutEndLabel = document.getElementById('cut-end-label');
+const cutDurationLabel = document.getElementById('cut-duration-label');
+const markStartButton = document.getElementById('mark-start');
+const markEndButton = document.getElementById('mark-end');
+const previewCutButton = document.getElementById('preview-cut');
+const clearCutButton = document.getElementById('clear-cut');
+const createManualClipButton = document.getElementById('create-manual-clip');
+const manualCutMessage = document.getElementById('manual-cut-msg');
+let cutStart = null;
+let cutEnd = null;
+let previewStopAt = null;
+
+function formatClock(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--:--';
+  const seconds = Math.max(0, Math.round(Number(value)));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function updateCutUi() {
+  if (!cutStatus) return;
+  const valid = cutStart !== null && cutEnd !== null && cutEnd - cutStart >= 1;
+  cutStartLabel.textContent = formatClock(cutStart);
+  cutEndLabel.textContent = formatClock(cutEnd);
+  cutDurationLabel.textContent = valid ? `${(cutEnd - cutStart).toFixed(1)}s` : '--';
+  createManualClipButton.disabled = !valid;
+  previewCutButton.disabled = !valid;
+  clearCutButton.disabled = cutStart === null && cutEnd === null;
+  if (valid) {
+    cutStatus.textContent = 'Trecho marcado';
+  } else if (cutStart !== null) {
+    cutStatus.textContent = 'Marque o fim';
+  } else {
+    cutStatus.textContent = 'Nenhum trecho marcado';
+  }
+}
+
+function setCutRange(start, end) {
+  cutStart = Math.max(0, Number(start) || 0);
+  cutEnd = Math.max(cutStart, Number(end) || cutStart);
+  if (cutEnd - cutStart < 1) cutEnd = cutStart + 1;
+  updateCutUi();
+}
+
+if (markStartButton) {
+  markStartButton.addEventListener('click', () => {
+    if (!player) return;
+    cutStart = player.currentTime;
+    if (cutEnd !== null && cutEnd <= cutStart) cutEnd = null;
+    updateCutUi();
+  });
+}
+
+if (markEndButton) {
+  markEndButton.addEventListener('click', () => {
+    if (!player) return;
+    cutEnd = player.currentTime;
+    if (cutStart !== null && cutEnd <= cutStart) {
+      cutStart = null;
+      cutEnd = null;
+    }
+    updateCutUi();
+  });
+}
+
+if (previewCutButton) {
+  previewCutButton.addEventListener('click', () => {
+    if (!player || cutStart === null || cutEnd === null) return;
+    player.currentTime = cutStart;
+    previewStopAt = cutEnd;
+    player.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    player.play().catch(() => {});
+  });
+}
+
+if (clearCutButton) {
+  clearCutButton.addEventListener('click', () => {
+    cutStart = null;
+    cutEnd = null;
+    previewStopAt = null;
+    updateCutUi();
+  });
+}
+
+if (createManualClipButton) {
+  createManualClipButton.addEventListener('click', async () => {
+    if (cutStart === null || cutEnd === null || cutEnd - cutStart < 1) return;
+    createManualClipButton.disabled = true;
+    createManualClipButton.textContent = 'Cortando...';
+    const response = await fetch(`/api/matches/${matchId}/clips/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start: cutStart, end: cutEnd })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível criar o clipe manual.');
+      createManualClipButton.disabled = false;
+      createManualClipButton.textContent = 'Criar clipe manual';
+      return;
+    }
+    const created = await response.json().catch(() => ({}));
+    const createdStart = Number(created.start ?? cutStart);
+    const createdEnd = Number(created.end ?? cutEnd);
+    sessionStorage.setItem('vt-seek', String(createdEnd));
+    sessionStorage.setItem(
+      'vt-flash',
+      `Clipe manual salvo: ${formatClock(createdStart)}-${formatClock(createdEnd)}.`
+    );
+    if (created.id) sessionStorage.setItem('vt-new-clip', String(created.id));
+    location.href = `/matches/${matchId}?tab=saved`;
+  });
+}
+
+document.querySelectorAll('[data-cut-start]').forEach((button) => {
+  button.addEventListener('click', () => {
+    setCutRange(button.dataset.cutStart, button.dataset.cutEnd);
+  });
+});
+
+if (player) {
+  player.addEventListener('timeupdate', () => {
+    if (previewStopAt !== null && player.currentTime >= previewStopAt) {
+      player.pause();
+      previewStopAt = null;
+    }
+  });
+}
 
 document.getElementById('use-time').addEventListener('click', () => {
   if (!player) return;
@@ -717,11 +909,16 @@ if (processClips) {
 const generateClips = document.getElementById('generate-clips');
 if (generateClips) {
   generateClips.addEventListener('click', async () => {
-    if (!confirm('Gerar clipes a partir da trajetória da bola? Isso pode levar alguns minutos e mantém os clipes já salvos.')) return;
+    const useGaps = document.getElementById('use-gaps');
+    const gapMessage = useGaps && useGaps.checked
+      ? ' Também vou reavaliar os minutos sem clipes no mapa de calor.'
+      : '';
+    if (!confirm(`Gerar novamente usando o perfil aprendido, o ranker e os clipes excluídos? Os clipes salvos são preservados.${gapMessage}`)) return;
     const before = [...document.querySelectorAll('.clip-card')].map((card) => card.dataset.clipId).sort().join(',');
     generateClips.disabled = true;
     generateClips.textContent = 'Gerando...';
-    const response = await fetch(`/api/matches/${matchId}/clips/generate`, { method: 'POST' });
+    const gapsQuery = useGaps && !useGaps.checked ? '?use_gaps=0' : '?use_gaps=1';
+    const response = await fetch(`/api/matches/${matchId}/clips/generate${gapsQuery}`, { method: 'POST' });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       alert(error.detail || 'Não foi possível iniciar a geração dos clipes.');
@@ -742,6 +939,32 @@ if (generateClips) {
       location.reload();
     }, 180000);
   });
+}
+
+const restoreSeek = sessionStorage.getItem('vt-seek');
+if (player && restoreSeek !== null) {
+  sessionStorage.removeItem('vt-seek');
+  const target = Math.max(0, Number(restoreSeek) || 0);
+  const applyRestore = () => { player.currentTime = target; };
+  if (player.readyState >= 1) applyRestore();
+  else player.addEventListener('loadedmetadata', applyRestore, { once: true });
+}
+
+const flashMessage = sessionStorage.getItem('vt-flash');
+if (flashMessage && manualCutMessage) {
+  sessionStorage.removeItem('vt-flash');
+  manualCutMessage.textContent = flashMessage;
+}
+
+const createdClipId = sessionStorage.getItem('vt-new-clip');
+if (createdClipId) {
+  sessionStorage.removeItem('vt-new-clip');
+  const card = document.querySelector(`.clip-card[data-clip-id="${createdClipId}"]`);
+  if (card) {
+    card.classList.add('just-created');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => card.classList.remove('just-created'), 4000);
+  }
 }
 
 const banner = document.getElementById('job-banner');

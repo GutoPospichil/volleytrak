@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .constants import CALIBRATION_MODES, MANUAL_EVENT_KINDS
 
@@ -92,6 +92,22 @@ class ClipRejectIn(BaseModel):
     @classmethod
     def clean_note(cls, note: str) -> str:
         return note.strip()[:500]
+
+
+class ManualClipIn(BaseModel):
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.end <= self.start:
+            raise ValueError("o fim do clipe deve ser maior que o início")
+        duration = self.end - self.start
+        if duration < 1.0:
+            raise ValueError("o clipe manual precisa ter pelo menos 1 segundo")
+        if duration > 180.0:
+            raise ValueError("o clipe manual é limitado a 3 minutos")
+        return self
 
 
 class ClipStarIn(BaseModel):

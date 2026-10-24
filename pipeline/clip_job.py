@@ -198,6 +198,13 @@ def main() -> int:
                 "clips_saved": sum(1 for clip in clips if clip["status"] == "saved"),
                 "clips_rejected": len(list_clip_rejections(args.match_id)),
                 "clips_starred": sum(1 for clip in clips if clip["starred"]),
+                "clips_gap": sum(1 for clip in clips if clip["source"] == "gap"),
+                "clips_recovered": sum(
+                    1 for clip in clips if clip["source"] == "recovered"
+                ),
+                "clips_manual": sum(
+                    1 for clip in clips if clip["source"] == "manual"
+                ),
             }
             result = {
                 "summary": summary,

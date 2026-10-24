@@ -120,3 +120,38 @@ Ao escolher **Corte errado / rally pela metade**, escolha também:
 - **As duas coisas**
 
 Isso ajusta o pré-roll/pós-roll sem precisar escrever a observação.
+
+## Gerar novamente com aprendizados
+
+Depois de salvar os clipes bons e excluir os ruins, use **Gerar novamente (aprendizados)** na página da partida:
+
+- o perfil aprendido é recalculado (pré-roll, pós-roll, velocidade ativa e bola mínima);
+- o ranker é treinado novamente com os clipes salvos e excluídos;
+- clipes salvos são preservados;
+- trechos excluídos por **Corte errado / rally pela metade** podem voltar como **Recuperado**, com o pré/pós-roll ajustado pelo submotivo;
+- os demais motivos (tempo morto, fora de rally, duplicado, outro) continuam bloqueando o trecho.
+
+Não é preciso rodar VballNet de novo: a geração usa as detecções de bola, áudio e contatos já existentes.
+
+## Reavaliar minutos sem clipes
+
+A opção **Reavaliar minutos sem clipes no mapa de calor** (marcada por padrão) procura rallies nos vãos de pelo menos 1 minuto:
+
+- usa contatos e bola dentro dos vãos, com limites um pouco mais flexíveis;
+- adiciona no máximo alguns candidatos por vão para não inundar a revisão;
+- os candidatos aparecem com o selo **Lacuna**.
+
+Se ainda faltar algum lance, use o corte manual.
+
+## Corte manual
+
+Na página da partida, abaixo do vídeo, há a ferramenta **Corte manual**:
+
+1. clique num bloco do mapa de calor ou num vão para posicionar o vídeo (o trecho de 15s já vem marcado);
+2. ajuste com **Marcar início** e **Marcar fim** enquanto assiste;
+3. use **Pré-visualizar** para conferir;
+4. clique em **Criar clipe manual**.
+
+O clipe manual é salvo direto na aba **Salvos**, com o selo **Manual**, e entra no highlight. Ele não é apagado na próxima geração. Para refazer, exclua o clipe manual normalmente.
+
+> Observação: o corte manual usa o ffmpeg local; o vídeo original não é alterado.

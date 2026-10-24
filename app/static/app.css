@@ -961,3 +961,99 @@ video {
   font-size: 12px;
   padding: 2px 0;
 }
+
+.check-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.check-line input {
+  accent-color: var(--accent);
+}
+
+.learned-note {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.learned-note summary {
+  cursor: pointer;
+}
+
+.learned-note ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.manual-cut {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b1218;
+}
+
+.manual-cut-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.manual-cut-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manual-cut-times strong {
+  color: var(--text);
+}
+
+.manual-cut #create-manual-clip {
+  margin-top: 2px;
+}
+
+.clip-source {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 3;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(5, 10, 15, 0.82);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.clip-source.manual {
+  color: #9ad0ff;
+  border-color: rgba(90, 170, 255, 0.5);
+}
+
+.clip-source.gap {
+  color: #f5c542;
+  border-color: rgba(245, 197, 66, 0.5);
+}
+
+.clip-source.recovered {
+  color: #7ee2a8;
+  border-color: rgba(126, 226, 168, 0.5);
+}
+
+.clip-card.just-created {
+  outline: 2px solid var(--ok);
+  outline-offset: 2px;
+}

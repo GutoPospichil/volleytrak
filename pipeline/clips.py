@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import math
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from app.config import JOB_DIR
+from app.constants import CLIP_REJECTION_CANONICAL
 from app.db import (
     add_clip,
     clear_unreviewed_clips,
@@ -144,36 +146,47 @@ def contact_windows(
     max_gap: float = 4.0,
     min_contacts: int = 3,
     max_duration: float = 30.0,
+    min_contact_score: float = 150.0,
+    min_score: float = 55.0,
+    max_group_span: float | None = None,
+    pre_pad: float = 2.5,
+    post_pad: float = 1.5,
 ) -> list[dict]:
     points = sorted(
         float(item["t"])
         for item in contacts
-        if float(item.get("score", 0.0)) >= 150.0
+        if float(item.get("score", 0.0)) >= min_contact_score
     )
     groups: list[list[float]] = []
     current: list[float] = []
     for point in points:
-        if current and point - current[-1] > max_gap:
+        if current and (
+            point - current[-1] > max_gap
+            or (max_group_span is not None and point - current[0] > max_group_span)
+        ):
             groups.append(current)
             current = []
         current.append(point)
     if current:
         groups.append(current)
 
+    record_times = [float(record["t"]) for record in records]
     windows: list[dict] = []
     for group in groups:
         if len(group) < min_contacts:
             continue
-        start = max(0.0, group[0] - 2.5)
-        end = min(duration, group[-1] + 1.5)
+        start = max(0.0, group[0] - pre_pad)
+        end = min(duration, group[-1] + post_pad)
         if end - start < 3.0 or end - start > max_duration:
             continue
+        left = bisect.bisect_left(record_times, start)
+        right = bisect.bisect_right(record_times, end)
+        subset = records[left:right]
         samples = []
-        for record in records:
-            if start <= record["t"] <= end:
-                balls = select_balls(record)
-                if balls:
-                    samples.append((float(record["t"]), balls[0]["court"]))
+        for record in subset:
+            balls = select_balls(record)
+            if balls:
+                samples.append((float(record["t"]), balls[0]["court"]))
         max_speed = 0.0
         for (t0, p0), (t1, p1) in zip(samples, samples[1:]):
             gap = t1 - t0
@@ -182,7 +195,7 @@ def contact_windows(
             speed = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / gap
             if 0 < speed <= 45:
                 max_speed = max(max_speed, speed)
-        ball_pct = len(samples) / max(1, sum(1 for r in records if start <= r["t"] <= end))
+        ball_pct = len(samples) / max(1, len(subset))
         contact_count = len(group)
         score = round(
             50.0
@@ -191,7 +204,7 @@ def contact_windows(
             + 10.0 * min(1.0, max_speed / 25.0),
             1,
         )
-        if score < 55.0:
+        if score < min_score:
             continue
         windows.append(
             {
@@ -208,6 +221,241 @@ def contact_windows(
             }
         )
     return windows
+
+
+def window_stats(
+    records: list[dict],
+    contact_times: list[float],
+    start: float,
+    end: float,
+) -> dict:
+    record_times = [float(record["t"]) for record in records]
+    left = bisect.bisect_left(record_times, start)
+    right = bisect.bisect_right(record_times, end)
+    subset = records[left:right]
+    samples = []
+    for record in subset:
+        balls = select_balls(record)
+        if balls:
+            samples.append((float(record["t"]), balls[0]["court"]))
+    max_speed = 0.0
+    for (t0, p0), (t1, p1) in zip(samples, samples[1:]):
+        gap = t1 - t0
+        if gap <= 0 or gap > 0.3:
+            continue
+        speed = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / gap
+        if 0 < speed <= 45:
+            max_speed = max(max_speed, speed)
+    contacts = sum(1 for value in contact_times if start <= value <= end)
+    return {
+        "ball_pct": len(samples) / max(1, len(subset)),
+        "max_speed": max_speed,
+        "contacts": contacts,
+    }
+
+
+def find_clip_gaps(
+    clips: list,
+    duration: float,
+    min_gap_seconds: float = 60.0,
+) -> list[dict]:
+    total = max(1, int(math.ceil(duration)))
+    covered = bytearray(total)
+    for clip in clips:
+        start = max(0, int(math.floor(float(clip["start"]))))
+        end = min(total, int(math.ceil(float(clip["end"]))))
+        for index in range(start, end):
+            covered[index] = 1
+    gaps: list[dict] = []
+    index = 0
+    while index < total:
+        if covered[index]:
+            index += 1
+            continue
+        start = index
+        while index < total and not covered[index]:
+            index += 1
+        if index - start >= min_gap_seconds:
+            gaps.append(
+                {
+                    "start": float(start),
+                    "end": float(index),
+                    "duration": float(index - start),
+                }
+            )
+    return gaps
+
+
+def gap_windows(
+    gaps: list[dict],
+    contacts: list[dict],
+    records: list[dict],
+    duration: float,
+    max_total: int = 24,
+    max_per_gap: int = 3,
+    min_ball_pct: float = 0.08,
+) -> list[dict]:
+    if not gaps or max_total <= 0 or not contacts:
+        return []
+    relaxed = contact_windows(
+        contacts,
+        records,
+        duration,
+        max_gap=5.0,
+        min_contacts=2,
+        max_duration=24.0,
+        min_contact_score=110.0,
+        min_score=40.0,
+        max_group_span=14.0,
+        pre_pad=2.0,
+        post_pad=1.5,
+    )
+    candidates: list[dict] = []
+    for window in relaxed:
+        window_start = float(window["start"])
+        window_end = float(window["end"])
+        window_duration = max(0.1, window_end - window_start)
+        for gap in gaps:
+            gap_start = float(gap["start"])
+            gap_end = float(gap["end"])
+            overlap = max(
+                0.0, min(window_end, gap_end) - max(window_start, gap_start)
+            )
+            if overlap < 0.6 * window_duration:
+                continue
+            start = max(gap_start, window_start)
+            end = min(gap_end, window_end)
+            if end - start < 3.0:
+                continue
+            if float(window.get("ball_pct", 0.0)) < min_ball_pct:
+                continue
+            candidate = dict(window)
+            candidate.update(
+                {
+                    "start": round(start, 2),
+                    "end": round(end, 2),
+                    "duration": round(end - start, 2),
+                    "score": round(max(1.0, float(window["score"]) - 2.0), 1),
+                    "source": "gap",
+                    "gap": True,
+                    "gap_start": round(gap_start, 2),
+                }
+            )
+            candidates.append(candidate)
+            break
+
+    if not candidates:
+        return []
+    grouped: dict[float, list[dict]] = {}
+    for candidate in candidates:
+        grouped.setdefault(float(candidate["gap_start"]), []).append(candidate)
+    for group in grouped.values():
+        group.sort(
+            key=lambda item: (float(item["score"]), float(item["duration"])),
+            reverse=True,
+        )
+
+    selected: list[dict] = []
+    for group in grouped.values():
+        selected.extend(group[:max_per_gap])
+    if len(selected) > max_total:
+        firsts = [group[0] for group in grouped.values()]
+        rest = sorted(
+            [item for group in grouped.values() for item in group[1:]],
+            key=lambda item: (float(item["score"]), float(item["duration"])),
+            reverse=True,
+        )
+        selected = firsts + rest[: max(0, max_total - len(firsts))]
+
+    selected.sort(key=lambda item: float(item["score"]), reverse=True)
+    unique: list[dict] = []
+    for candidate in selected:
+        duplicate = False
+        for existing in unique:
+            overlap = max(
+                0.0,
+                min(float(candidate["end"]), float(existing["end"]))
+                - max(float(candidate["start"]), float(existing["start"])),
+            )
+            if overlap > 1.5:
+                duplicate = True
+                break
+        if not duplicate:
+            unique.append(candidate)
+    unique.sort(key=lambda item: float(item["start"]))
+    return unique
+
+
+def recovered_windows(
+    rejections: list,
+    records: list[dict],
+    contact_times: list[float],
+    duration: float,
+    pre_roll: float,
+    post_roll: float,
+    max_total: int = 16,
+    min_ball_pct: float = 0.04,
+) -> list[dict]:
+    windows: list[dict] = []
+    for rejection in rejections:
+        reason = rejection["reason"] or "other"
+        reason = CLIP_REJECTION_CANONICAL.get(reason, reason)
+        if reason != "bad_cut":
+            continue
+        detail = rejection["detail"] if "detail" in rejection.keys() else ""
+        start = float(rejection["start"])
+        end = float(rejection["end"])
+        if detail in {"start_late", "both", ""}:
+            start = max(0.0, start - pre_roll)
+        if detail in {"end_early", "both", ""}:
+            end = min(duration, end + post_roll)
+        if end - start < 3.0 or end - start > 30.0:
+            continue
+        stats = window_stats(records, contact_times, start, end)
+        if float(stats["ball_pct"]) < min_ball_pct:
+            continue
+        score = round(
+            50.0
+            + 20.0 * min(1.0, float(stats["ball_pct"]) / 0.5)
+            + 20.0 * min(1.0, float(stats["contacts"]) / 5.0)
+            + 10.0 * min(1.0, float(stats["max_speed"]) / 25.0),
+            1,
+        )
+        windows.append(
+            {
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "duration": round(end - start, 2),
+                "score": score,
+                "max_speed": round(float(stats["max_speed"]), 1),
+                "ball_pct": round(float(stats["ball_pct"]), 3),
+                "contacts": int(stats["contacts"]),
+                "crossings": 0,
+                "min_y": None,
+                "source": "recovered",
+                "recovered": True,
+                "detail": detail,
+            }
+        )
+    windows.sort(key=lambda item: float(item["score"]), reverse=True)
+    unique: list[dict] = []
+    for candidate in windows:
+        if len(unique) >= max_total:
+            break
+        duplicate = False
+        for existing in unique:
+            overlap = max(
+                0.0,
+                min(float(candidate["end"]), float(existing["end"]))
+                - max(float(candidate["start"]), float(existing["start"])),
+            )
+            if overlap > 1.5:
+                duplicate = True
+                break
+        if not duplicate:
+            unique.append(candidate)
+    unique.sort(key=lambda item: float(item["start"]))
+    return unique
 
 
 def cut_clip(video_path: Path, start: float, end: float, output_path: Path) -> bool:
@@ -279,7 +527,8 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=3.0)
     parser.add_argument("--min-y", type=float, default=300.0)
     parser.add_argument("--min-score", type=float, default=50.0)
-    parser.add_argument("--max-clips", type=int, default=60)
+    parser.add_argument("--max-clips", type=int, default=100)
+    parser.add_argument("--gap-clips", type=int, default=24)
     parser.add_argument("--ball", default="")
     parser.add_argument("--rallies", default="")
     parser.add_argument("--no-audio", action="store_true")
@@ -336,6 +585,34 @@ def main() -> int:
         if line.strip()
     ]
     duration = float(records_for_duration[-1]["t"]) if records_for_duration else 0.0
+    existing_clips = list_clips(args.match_id)
+    gaps = find_clip_gaps(existing_clips, duration)
+    gap_candidates = (
+        gap_windows(
+            gaps,
+            contacts_payload,
+            records_for_duration,
+            duration,
+            max_total=args.gap_clips,
+            min_ball_pct=max(0.06, min_ball_pct - 0.04),
+        )
+        if args.gap_clips > 0
+        else []
+    )
+    rejection_rows = list_clip_rejections(args.match_id)
+    recovered = recovered_windows(
+        rejection_rows,
+        records_for_duration,
+        contact_times,
+        duration,
+        pre_roll=float(trim_profile.get("pre_roll", 1.0)),
+        post_roll=float(trim_profile.get("post_roll", 1.8)),
+        min_ball_pct=max(0.04, min_ball_pct * 0.5),
+    )
+    print(
+        f"lacunas_sem_clipes={len(gaps)} candidatos_lacuna={len(gap_candidates)} "
+        f"recuperados={len(recovered)}"
+    )
     contact_candidates = (
         contact_windows(contacts_payload, records_for_duration, duration)
         if contacts_payload
@@ -410,13 +687,16 @@ def main() -> int:
         window["source"] = "speed"
         add_complement(window)
 
+    for candidate in gap_candidates:
+        add_complement(candidate)
+
     if not windows:
         for window in speed_windows:
             window["source"] = "speed"
         windows = speed_windows
     windows.sort(key=lambda item: item["start"])
 
-    rejections = list_clip_rejections(args.match_id)
+    rejections = rejection_rows
     if rejections:
         filtered = []
         for window in windows:
@@ -464,22 +744,6 @@ def main() -> int:
     if split_count:
         print(f"janelas longas divididas: {split_count}")
 
-    if ranker_weight > 0:
-        for window in windows:
-            window["base_score"] = window["score"]
-            vector = feature_vector(
-                window,
-                float(window["duration"]),
-                str(window.get("source", "speed")),
-            )
-            probability = predict_probability(ranker_model, vector)
-            window["ranker_score"] = round(probability * 100.0, 1)
-            window["score"] = round(
-                (1.0 - ranker_weight) * window["score"]
-                + ranker_weight * window["ranker_score"],
-                1,
-            )
-
     saved_clips = list_clips(args.match_id, "saved")
     if saved_clips:
         filtered = []
@@ -501,8 +765,63 @@ def main() -> int:
         print(f"ignorados por já estarem salvos: {len(windows) - len(filtered)}")
         windows = filtered
 
-    windows = windows[: args.max_clips]
-    print(f"candidatos: {len(windows)} (audio={len(audio_windows)})")
+    for candidate in recovered:
+        duplicate = False
+        for saved in saved_clips:
+            overlap = max(
+                0.0,
+                min(candidate["end"], saved["end"])
+                - max(candidate["start"], saved["start"]),
+            )
+            saved_duration = max(0.1, saved["end"] - saved["start"])
+            if overlap / min(candidate["duration"], saved_duration) > 0.5:
+                duplicate = True
+                break
+        if not duplicate:
+            add_complement(candidate)
+
+    if ranker_weight > 0:
+        for window in windows:
+            window["base_score"] = window["score"]
+            vector = feature_vector(
+                window,
+                float(window["duration"]),
+                str(window.get("source", "speed")),
+            )
+            probability = predict_probability(ranker_model, vector)
+            window["ranker_score"] = round(probability * 100.0, 1)
+            window["score"] = round(
+                (1.0 - ranker_weight) * window["score"]
+                + ranker_weight * window["ranker_score"],
+                1,
+            )
+
+    protected = [
+        window
+        for window in windows
+        if window.get("gap") or window.get("recovered")
+    ]
+    regular = [
+        window
+        for window in windows
+        if not (window.get("gap") or window.get("recovered"))
+    ]
+    if len(regular) > args.max_clips:
+        regular.sort(key=lambda item: float(item["score"]), reverse=True)
+        print(
+            f"limite de {args.max_clips} candidatos comuns aplicado "
+            f"({len(regular)} -> {args.max_clips})"
+        )
+        regular = regular[: args.max_clips]
+    windows = sorted(
+        protected + regular, key=lambda item: float(item["start"])
+    )
+    gap_total = sum(1 for window in windows if window.get("gap"))
+    recovered_total = sum(1 for window in windows if window.get("recovered"))
+    print(
+        f"candidatos: {len(windows)} (audio={len(audio_windows)}, "
+        f"lacuna={gap_total}, recuperados={recovered_total})"
+    )
     for window in windows:
         min_y_value = window.get("min_y")
         min_y_text = "-" if min_y_value is None else f"{min_y_value:.0f}"
