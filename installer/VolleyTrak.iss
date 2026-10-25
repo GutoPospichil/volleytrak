@@ -1,6 +1,6 @@
-#define Root "D:\volleytrak"
+﻿#define Root "D:\volleytrak"
 #define AppName "VolleyTrak"
-#define AppVersion "0.3.11"
+#define AppVersion "0.3.12"
 #define AppPublisher "VolleyTrak Local"
 
 [Setup]
@@ -22,14 +22,14 @@ SolidCompression=no
 WizardStyle=modern
 UninstallDisplayName=VolleyTrak
 UninstallDisplayIcon={app}\VolleyTrak.ico
-ExtraDiskSpaceRequired=8589934592
+ExtraDiskSpaceRequired=3221225472
 SetupLogging=yes
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"
+Name: "desktopicon"; Description: "Criar atalho na Ãrea de Trabalho"; GroupDescription: "Atalhos:"
 
 [Files]
 Source: "{#Root}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs

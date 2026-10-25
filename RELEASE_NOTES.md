@@ -1,21 +1,31 @@
-# VolleyTrak 0.3.11 beta
+# VolleyTrak 0.3.12 beta
 
-## Marca
-- Logo VT VolleyTrak no topo, favicon, ícone do instalador e ícones PWA.
-- Manifest PWA em `/static/manifest.webmanifest`; o navegador pode oferecer **Instalar VolleyTrak**.
-- Atalhos do Windows usam o ícone do VolleyTrak.
+## Instalação muito mais fácil
+- Agora o instalador é um **arquivo único** `VolleyTrakSetup.exe` (~341 MB), sem partes `.7z` e sem precisar de 7-Zip.
+- O portátil também é um **arquivo único** `VolleyTrakPortable.7z` (~252 MB).
+- O runtime foi enxugado: removi PyTorch/Ultralytics/Transformers que não eram usados no fluxo de clipes. O app ficou cerca de 8x menor.
+- O instalador cria o atalho **VolleyTrak** com ícone e abre a janela desktop (pywebview/WebView2).
+- Windows 10/11 x64, WebView2, ~3 GB livres. Não é necessário Python, 7-Zip nem driver NVIDIA para os clipes.
+- O instalador não é assinado; o SmartScreen pode pedir confirmação.
 
-## VolleyTrak como aplicativo desktop
-- Nova janela nativa via WebView2 (pywebview), sem barra de navegador.
-- O atalho **VolleyTrak** da área de trabalho abre o app, inicia o servidor Python junto e fecha o servidor quando a janela fecha.
-- A interface continua sendo a mesma HTML/CSS/JS; o processamento pesado segue em Python/OpenCV/ONNX.
-- Fallback **VolleyTrak (navegador)** e **VolleyTrak (janela web)** para abrir no Chrome/Edge.
-- Dependência `pywebview` incluída no Python portátil.
+## Arrastar e soltar
+- Na tela inicial, arraste um vídeo para **“Arraste um vídeo para cá”**.
+- O app importa, cria a partida e abre a página automaticamente.
+- Também funciona clicando na área para escolher o arquivo.
+- A opção **Com apito / Sem apito** fica ao lado da área de drop.
 
-## Base da 0.3.10
+## Interface com opções clicáveis
+- **Com apito / Sem apito** em cartões no envio e no vídeo local.
+- **Motivo** e **detalhe do corte** em chips clicáveis.
+- **Tempo / Mais incertos / Maior score** em chips.
+- **Modo de referência** da calibração em cartões.
+- **Equipe** do jogador e **Tipo** do evento em chips.
+- Logo VT no topo, favicon, ícones do instalador e manifest PWA.
+
+## Fluxo de clipes
+- Processar clipes / Gerar novamente (aprendizados).
 - Filtro de quadra vazia/parada por movimento dentro da quadra.
-- Opção **Ignorar quadra vazia/parada** marcada por padrão.
-- Duplicados após edição e edição com aprendizado.
+- Edição de corte, duplicados após edição e aprendizado.
+- O botão legado **Processar** (pipeline de pessoas) foi removido da interface; o fluxo é focado em clipes.
 
-Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
-Windows 10/11 x64, WebView2 (já vem com o Windows/Edge), driver NVIDIA e ~8 GB livres.
+Baixe `VolleyTrakSetup.exe` e execute. Para portátil, baixe `VolleyTrakPortable.7z` e extraia.

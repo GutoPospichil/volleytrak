@@ -10,13 +10,15 @@
 </div>
 
 <section class="card">
-  <label>Modo de referência
-    <select id="calibration-mode">
+  <div class="choice-field">
+    <span class="choice-label">Modo de referência</span>
+    <div class="choice-group choice-cards" data-choice-group>
+      <input type="hidden" id="calibration-mode" value="full">
       {% for key, configuration in calibration_modes.items() %}
-      <option value="{{ key }}">{{ configuration.label }}</option>
+      <button class="choice" type="button" data-choice="{{ key }}">{{ configuration.label }}</button>
       {% endfor %}
-    </select>
-  </label>
+    </div>
+  </div>
   <p id="mode-hint" class="muted small"></p>
 
   <div class="calib-toolbar">

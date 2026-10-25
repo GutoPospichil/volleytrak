@@ -17,7 +17,6 @@
   </div>
   <div class="actions">
     <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Calibrar quadra</a>
-    <button id="process-btn" class="button primary" {% if match.status == "processing" %}disabled{% endif %}>Processar</button>
     <button id="delete-match" class="button ghost" data-title="{{ match.title }}">Excluir</button>
   </div>
 </div>
@@ -199,13 +198,15 @@
     </ul>
   </details>
   <div class="review-toolbar">
-    <label class="check-line">Ordenar não verificados:
-      <select id="clip-sort">
-        <option value="time">Tempo</option>
-        <option value="uncertain">Mais incertos primeiro</option>
-        <option value="score">Maior score</option>
-      </select>
-    </label>
+    <div class="choice-field">
+      <span class="choice-label">Ordenar não verificados</span>
+      <div class="choice-group choice-chips" data-choice-group>
+        <input type="hidden" id="clip-sort" value="time">
+        <button class="choice" type="button" data-choice="time">Tempo</button>
+        <button class="choice" type="button" data-choice="uncertain">Mais incertos</button>
+        <button class="choice" type="button" data-choice="score">Maior score</button>
+      </div>
+    </div>
     <span class="muted small">Atalhos no player: S salvar · D excluir · ←/→ navegar · Espaço play/pause</span>
   </div>
 
@@ -359,21 +360,24 @@
         <button id="close-reject" class="button ghost small" type="button">Fechar</button>
       </div>
       <p class="muted small">Por que este clipe não deve entrar no hall de rallies?</p>
-      <label>Motivo
-        <select id="reject-reason">
+      <div class="choice-field">
+        <span class="choice-label">Motivo</span>
+        <div class="choice-group choice-chips" data-choice-group>
+          <input type="hidden" id="reject-reason" value="dead_time">
           {% for value, label in rejection_labels.items() %}
-          <option value="{{ value }}">{{ label }}</option>
+          <button class="choice" type="button" data-choice="{{ value }}">{{ label }}</button>
           {% endfor %}
-        </select>
-      </label>
-      <label id="reject-detail-wrap" hidden>Detalhe do corte
-        <select id="reject-detail">
-          <option value="">Selecione</option>
+        </div>
+      </div>
+      <div id="reject-detail-wrap" class="choice-field" hidden>
+        <span class="choice-label">Detalhe do corte</span>
+        <div class="choice-group choice-chips" data-choice-group>
+          <input type="hidden" id="reject-detail" value="">
           {% for value, label in rejection_details.items() %}
-          <option value="{{ value }}">{{ label }}</option>
+          <button class="choice" type="button" data-choice="{{ value }}">{{ label }}</button>
           {% endfor %}
-        </select>
-      </label>
+        </div>
+      </div>
       <label>Observação
         <textarea id="reject-note" rows="3" maxlength="500" placeholder="Opcional: descreva o problema"></textarea>
       </label>
@@ -397,13 +401,15 @@
         <input id="event-t" name="t" type="number" step="0.1" min="0" required>
       </label>
       <button type="button" id="use-time" class="button ghost small">Usar tempo do vídeo</button>
-      <label>Tipo
-        <select name="kind" required>
+      <div class="choice-field">
+        <span class="choice-label">Tipo</span>
+        <div class="choice-group choice-chips" data-choice-group>
+          <input type="hidden" name="kind" value="serve">
           {% for value, label in kinds.items() %}
-          <option value="{{ value }}">{{ label }}</option>
+          <button class="choice" type="button" data-choice="{{ value }}">{{ label }}</button>
           {% endfor %}
-        </select>
-      </label>
+        </div>
+      </div>
       <label>Set
         <input name="set_no" type="number" min="1" max="5">
       </label>
@@ -707,7 +713,7 @@ document.querySelectorAll('[data-seek]').forEach((button) => {
   });
 });
 
-document.getElementById('process-btn').addEventListener('click', async (event) => {
+document.getElementById('process-btn')?.addEventListener('click', async (event) => {
   const button = event.currentTarget;
   button.disabled = true;
   const response = await fetch(`/api/matches/${matchId}/process`, { method: 'POST' });
@@ -1252,18 +1258,23 @@ const rejectNote = document.getElementById('reject-note');
 function updateRejectDetail() {
   const show = rejectReason.value === 'bad_cut';
   rejectDetailWrap.hidden = !show;
-  if (!show) rejectDetail.value = '';
+  if (!show) {
+    rejectDetail.value = '';
+    window.setChoiceValue?.('reject-detail', '', false);
+  }
 }
 
 function openReject(clipId, card = null) {
   rejectClipId = clipId;
   rejectCard = card || (currentClipCard && currentClipId === clipId ? currentClipCard : null);
+  window.setChoiceValue?.('reject-reason', 'dead_time');
+  window.setChoiceValue?.('reject-detail', '');
   rejectReason.value = 'dead_time';
   rejectDetail.value = '';
   rejectNote.value = '';
   updateRejectDetail();
   rejectModal.hidden = false;
-  rejectReason.focus();
+  document.querySelector('#reject-reason ~ button')?.focus();
 }
 
 function closeReject() {

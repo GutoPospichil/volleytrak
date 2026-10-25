@@ -269,3 +269,30 @@ Isso abre uma janela nativa do Windows via WebView2 (pywebview), sem barra de na
 A interface continua sendo HTML/CSS/JS por dentro — o processamento pesado é Python/OpenCV/ONNX. Isso permite ter cara de app sem reescrever toda a interface. As opções para uma interface totalmente nativa no futuro são Tauri (mais leve, exige Rust e empacotar o Python como sidecar) ou WPF/MAUI/Flutter (reescrita completa, maior esforço e sem ganho no processamento). O caminho recomendado é evoluir o wrapper desktop atual e só trocar a UI se houver uma necessidade real de design/interação.
 
 Também existe o fallback `Abrir VolleyTrak (app).cmd`, que abre o Chrome/Edge em modo janela de app, sem barra de endereço.
+
+## Instalação para testadores
+
+O caminho mais fácil é o **instalador único** `VolleyTrakSetup.exe`:
+
+1. baixe o arquivo;
+2. execute o instalador (o Windows pode mostrar aviso do SmartScreen porque ele não é assinado);
+3. abra o atalho **VolleyTrak** na área de trabalho.
+
+O instalador já inclui Python, ffmpeg, modelos, interface e a janela desktop. Não é necessário instalar Python, 7-Zip ou driver NVIDIA para o fluxo de clipes. Requisitos: Windows 10/11 x64, WebView2 (já vem com o Windows/Edge) e cerca de 3 GB livres.
+
+O `VolleyTrakPortable.7z` é opcional para quem quiser rodar sem instalar; extraia e use `Abrir VolleyTrak (desktop).cmd`.
+
+## Arrastar e soltar
+
+Na tela inicial, arraste um vídeo para a área **“Arraste um vídeo para cá”**. O app importa o arquivo, cria a partida e abre a página dela. Também dá para clicar na área e escolher o arquivo.
+
+## Opções clicáveis
+
+Os principais selects viraram cartões/chips clicáveis:
+
+- **Com apito / Sem apito** no envio e no vídeo local;
+- **Motivo** e **detalhe do corte** na exclusão;
+- **Tempo / Mais incertos / Maior score** na revisão;
+- **Modo de referência** na calibração;
+- **Equipe** no cadastro de jogador;
+- **Tipo** no evento manual.

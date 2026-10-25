@@ -7,6 +7,31 @@
   <p class="muted hero-text">Envie um vídeo ou aponte para um arquivo do seu computador. Calibre a quadra e processe com IA rodando na sua máquina.</p>
 </section>
 
+<section class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Arraste ou escolha um vídeo">
+  <div class="drop-zone-icon">⇪</div>
+  <div class="drop-zone-copy">
+    <strong>Arraste um vídeo para cá</strong>
+    <p class="muted small">ou clique para escolher o arquivo. O VolleyTrak importa e abre a partida.</p>
+  </div>
+  <div class="choice-group choice-chips" data-choice-group>
+    <input type="hidden" id="drop-whistle" value="with">
+    <button class="choice" type="button" data-choice="with">Com apito</button>
+    <button class="choice" type="button" data-choice="without">Sem apito</button>
+  </div>
+  <input type="file" id="drop-file" accept="video/*,.mkv,.avi,.mov,.m4v,.webm" hidden>
+  <div id="drop-status" class="upload-status" hidden>
+    <div class="bar"><span></span></div>
+    <p class="muted small"></p>
+  </div>
+</section>
+
+<div id="drop-overlay" class="drop-overlay" hidden>
+  <div class="drop-overlay-card">
+    <strong>Solte o vídeo</strong>
+    <span>O VolleyTrak importa e abre a partida.</span>
+  </div>
+</div>
+
 <div class="grid two">
   <section class="card">
     <h2>Enviar vídeo</h2>
@@ -24,6 +49,14 @@
         <label>Data
           <input type="date" name="played_on">
         </label>
+      </div>
+      <div class="choice-field">
+        <span class="choice-label">Áudio do jogo</span>
+        <div class="choice-group choice-cards" data-choice-group>
+          <input type="hidden" name="whistle_mode" value="with">
+          <button class="choice" type="button" data-choice="with"><strong>Com apito</strong><small>Usa apito + bola/contatos</small></button>
+          <button class="choice" type="button" data-choice="without"><strong>Sem apito</strong><small>Só bola e contatos</small></button>
+        </div>
       </div>
       <button class="button primary" type="submit">Enviar vídeo</button>
       <div id="upload-status" class="upload-status" hidden>
@@ -50,12 +83,14 @@
         <label>Data
           <input type="date" name="played_on">
         </label>
-        <label>Apito
-          <select name="whistle_mode">
-            <option value="with">Jogo com apito</option>
-            <option value="without">Jogo sem apito</option>
-          </select>
-        </label>
+      </div>
+      <div class="choice-field">
+        <span class="choice-label">Áudio do jogo</span>
+        <div class="choice-group choice-cards" data-choice-group>
+          <input type="hidden" name="whistle_mode" value="with">
+          <button class="choice" type="button" data-choice="with"><strong>Com apito</strong><small>Usa apito + bola/contatos</small></button>
+          <button class="choice" type="button" data-choice="without"><strong>Sem apito</strong><small>Só bola e contatos</small></button>
+        </div>
       </div>
       <button class="button secondary" type="submit">Registrar</button>
       <p id="local-status" class="muted small"></p>
@@ -98,19 +133,20 @@ const uploadStatus = document.getElementById('upload-status');
 const uploadBar = uploadStatus.querySelector('.bar span');
 const uploadText = uploadStatus.querySelector('p');
 
-uploadForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const button = uploadForm.querySelector('button');
+function sendMatchUpload(formData, button, statusBox) {
+  const bar = statusBox.querySelector('.bar span');
+  const text = statusBox.querySelector('p');
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/api/matches');
-  uploadStatus.hidden = false;
-  button.disabled = true;
-  uploadText.textContent = 'Enviando...';
+  statusBox.hidden = false;
+  if (button) button.disabled = true;
+  text.textContent = 'Enviando...';
+  if (bar) bar.style.width = '0%';
   xhr.upload.onprogress = (progress) => {
     if (!progress.lengthComputable) return;
     const percent = Math.round(progress.loaded / progress.total * 100);
-    uploadBar.style.width = percent + '%';
-    uploadText.textContent = `Enviando... ${percent}%`;
+    if (bar) bar.style.width = percent + '%';
+    text.textContent = `Enviando... ${percent}%`;
   };
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
@@ -120,14 +156,85 @@ uploadForm.addEventListener('submit', (event) => {
     }
     let message = 'Falha no upload';
     try { message = JSON.parse(xhr.responseText).detail || message; } catch (error) {}
-    uploadText.textContent = message;
-    button.disabled = false;
+    text.textContent = message;
+    if (button) button.disabled = false;
   };
   xhr.onerror = () => {
-    uploadText.textContent = 'Erro de rede durante o upload.';
-    button.disabled = false;
+    text.textContent = 'Erro de rede durante o upload.';
+    if (button) button.disabled = false;
   };
-  xhr.send(new FormData(uploadForm));
+  xhr.send(formData);
+}
+
+uploadForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const button = uploadForm.querySelector('button');
+  sendMatchUpload(new FormData(uploadForm), button, uploadStatus);
+});
+
+const dropZone = document.getElementById('drop-zone');
+const dropFileInput = document.getElementById('drop-file');
+const dropStatus = document.getElementById('drop-status');
+const dropWhistle = document.getElementById('drop-whistle');
+const dropOverlay = document.getElementById('drop-overlay');
+const videoExtension = /\.(mp4|mov|mkv|avi|m4v|webm)$/i;
+let dragDepth = 0;
+
+function uploadDroppedFile(file) {
+  if (!file) return;
+  if (!videoExtension.test(file.name) && !file.type.startsWith('video/')) {
+    dropStatus.hidden = false;
+    dropStatus.querySelector('p').textContent = 'Formato de vídeo não suportado.';
+    return;
+  }
+  const data = new FormData();
+  data.append('file', file);
+  data.append('title', file.name.replace(/\.[^.]+$/, ''));
+  data.append('whistle_mode', dropWhistle ? dropWhistle.value || 'with' : 'with');
+  sendMatchUpload(data, null, dropStatus);
+}
+
+dropZone.addEventListener('click', (event) => {
+  if (event.target.closest('.choice')) return;
+  dropFileInput.click();
+});
+
+dropZone.addEventListener('keydown', (event) => {
+  if (event.target !== dropZone) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    dropFileInput.click();
+  }
+});
+
+dropFileInput.addEventListener('change', () => {
+  uploadDroppedFile(dropFileInput.files[0]);
+  dropFileInput.value = '';
+});
+
+document.addEventListener('dragenter', (event) => {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  dragDepth += 1;
+  dropOverlay.hidden = false;
+});
+
+document.addEventListener('dragover', (event) => {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+});
+
+document.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) dropOverlay.hidden = true;
+});
+
+document.addEventListener('drop', (event) => {
+  event.preventDefault();
+  dragDepth = 0;
+  dropOverlay.hidden = true;
+  uploadDroppedFile(event.dataTransfer?.files?.[0]);
 });
 
 const localForm = document.getElementById('local-form');

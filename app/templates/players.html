@@ -19,12 +19,14 @@
         <label>Número
           <input name="number" type="number" min="0" max="99">
         </label>
-        <label>Equipe
-          <select name="team">
-            <option value="home">Nossa equipe</option>
-            <option value="away">Adversário</option>
-          </select>
-        </label>
+        <div class="choice-field">
+          <span class="choice-label">Equipe</span>
+          <div class="choice-group choice-chips" data-choice-group>
+            <input type="hidden" name="team" value="home">
+            <button class="choice" type="button" data-choice="home">Nossa equipe</button>
+            <button class="choice" type="button" data-choice="away">Adversário</button>
+          </div>
+        </div>
       </div>
       <button class="button primary" type="submit">Adicionar</button>
       <p id="player-status" class="muted small"></p>
