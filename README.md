@@ -296,3 +296,20 @@ Os principais selects viraram cartões/chips clicáveis:
 - **Modo de referência** na calibração;
 - **Equipe** no cadastro de jogador;
 - **Tipo** no evento manual.
+
+## Velocidade e atalhos de vídeo
+
+Em todos os players (vídeo original, edição de corte e clipe) há controles de velocidade:
+
+- **0.5x, 0.75x, 1x, 1.25x, 1.5x e 2x**;
+- a escolha é salva e aplicada aos próximos vídeos/players.
+
+Atalhos:
+
+- **←/→**: volta/avança **5 segundos**;
+- **Shift + ←/→** (com um clipe aberto): clipe anterior/próximo;
+- **Espaço**: play/pause;
+- **Esc**: fecha a janela;
+- **S** salvar, **D** excluir, **E** editar o corte.
+
+Quando o foco está em um campo numérico, as setas ajustam o valor do campo em vez de mover o vídeo.

@@ -1,31 +1,22 @@
-# VolleyTrak 0.3.12 beta
+# VolleyTrak 0.3.13 beta
 
-## Instalação muito mais fácil
-- Agora o instalador é um **arquivo único** `VolleyTrakSetup.exe` (~341 MB), sem partes `.7z` e sem precisar de 7-Zip.
-- O portátil também é um **arquivo único** `VolleyTrakPortable.7z` (~252 MB).
-- O runtime foi enxugado: removi PyTorch/Ultralytics/Transformers que não eram usados no fluxo de clipes. O app ficou cerca de 8x menor.
-- O instalador cria o atalho **VolleyTrak** com ícone e abre a janela desktop (pywebview/WebView2).
-- Windows 10/11 x64, WebView2, ~3 GB livres. Não é necessário Python, 7-Zip nem driver NVIDIA para os clipes.
-- O instalador não é assinado; o SmartScreen pode pedir confirmação.
+## Velocidade do vídeo
+- Controle de velocidade em todos os players: vídeo original, edição de corte e clipe.
+- Opções: 0.5x, 0.75x, 1x, 1.25x, 1.5x e 2x.
+- A velocidade escolhida é salva e aplicada aos próximos vídeos.
 
-## Arrastar e soltar
-- Na tela inicial, arraste um vídeo para **“Arraste um vídeo para cá”**.
-- O app importa, cria a partida e abre a página automaticamente.
-- Também funciona clicando na área para escolher o arquivo.
-- A opção **Com apito / Sem apito** fica ao lado da área de drop.
+## Atalhos estilo YouTube
+- **←/→**: volta/avança 5 segundos.
+- **Shift + ←/→** com um clipe aberto: clipe anterior/próximo.
+- **Espaço**: play/pause.
+- **Esc** fecha; **S** salva; **D** exclui; **E** edita o corte.
+- Nos campos numéricos, as setas continuam ajustando o valor do campo.
 
-## Interface com opções clicáveis
-- **Com apito / Sem apito** em cartões no envio e no vídeo local.
-- **Motivo** e **detalhe do corte** em chips clicáveis.
-- **Tempo / Mais incertos / Maior score** em chips.
-- **Modo de referência** da calibração em cartões.
-- **Equipe** do jogador e **Tipo** do evento em chips.
-- Logo VT no topo, favicon, ícones do instalador e manifest PWA.
-
-## Fluxo de clipes
-- Processar clipes / Gerar novamente (aprendizados).
-- Filtro de quadra vazia/parada por movimento dentro da quadra.
-- Edição de corte, duplicados após edição e aprendizado.
-- O botão legado **Processar** (pipeline de pessoas) foi removido da interface; o fluxo é focado em clipes.
+## Base da 0.3.12
+- Instalador único `VolleyTrakSetup.exe` (~341 MB), sem 7-Zip/partes.
+- Portátil único `VolleyTrakPortable.7z` (~252 MB).
+- Arrastar e soltar vídeo na tela inicial.
+- Opções clicáveis (com/sem apito, motivo, detalhe, ordenação, calibração, equipe, tipo).
+- App desktop com janela WebView2, logo e ícone.
 
 Baixe `VolleyTrakSetup.exe` e execute. Para portátil, baixe `VolleyTrakPortable.7z` e extraia.

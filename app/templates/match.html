@@ -21,6 +21,18 @@
   </div>
 </div>
 
+{% macro speed_control() %}
+<div class="speed-control" data-speed-control>
+  <span class="speed-label">Velocidade</span>
+  <button type="button" data-speed="0.5">0.5x</button>
+  <button type="button" data-speed="0.75">0.75x</button>
+  <button type="button" data-speed="1">1x</button>
+  <button type="button" data-speed="1.25">1.25x</button>
+  <button type="button" data-speed="1.5">1.5x</button>
+  <button type="button" data-speed="2">2x</button>
+</div>
+{% endmacro %}
+
 <div id="job-banner" class="card banner" {% if match.status != "processing" %}hidden{% endif %} data-processing="{{ '1' if match.status == 'processing' else '0' }}">
   <div class="card-head">
     <strong>Processando</strong>
@@ -35,6 +47,10 @@
     <h2>Vídeo</h2>
     <video id="player" controls preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
     <p class="muted small">Tempo atual: <span id="current-time">0.0</span>s</p>
+    <div class="video-toolbar">
+      {{ speed_control() }}
+      <span class="muted small">←/→ volta/avança 5s · Espaço play/pause</span>
+    </div>
     <div class="manual-cut" id="manual-cut">
       <div class="card-head">
         <strong>Corte manual</strong>
@@ -348,8 +364,9 @@
         <button id="delete-clip" class="button ghost small" type="button">Excluir clipe</button>
       </div>
       <p id="clip-edit-note" class="muted small" hidden></p>
+      {{ speed_control() }}
       <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
-      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ navegar · Espaço play/pause</p>
+      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause</p>
     </div>
   </div>
 
@@ -470,6 +487,8 @@
         </div>
         <div class="edit-controls">
           <p id="edit-info" class="muted small"></p>
+          {{ speed_control() }}
+          <p class="muted small">←/→ volta/avança 5s · Espaço play/pause</p>
           <div class="edit-grid">
             <label>Início (s)
               <input id="edit-start" type="number" min="0" step="0.1">
@@ -767,6 +786,35 @@ let editOldEnd = null;
 let editPreviewStop = null;
 const appToast = document.getElementById('app-toast');
 let appToastTimer = null;
+const speedButtons = [...document.querySelectorAll('[data-speed-control] [data-speed]')];
+let playbackRate = parseFloat(localStorage.getItem('vt-playback-rate') || '1') || 1;
+
+function applyPlaybackRate(rate) {
+  playbackRate = Math.max(0.25, Math.min(4, Number(rate) || 1));
+  localStorage.setItem('vt-playback-rate', String(playbackRate));
+  [player, clipVideo, editVideo].forEach((video) => {
+    if (video) video.playbackRate = playbackRate;
+  });
+  speedButtons.forEach((button) => {
+    button.classList.toggle(
+      'active',
+      Math.abs(parseFloat(button.dataset.speed) - playbackRate) < 0.01
+    );
+  });
+}
+
+speedButtons.forEach((button) => {
+  button.addEventListener('click', () => applyPlaybackRate(button.dataset.speed));
+});
+
+[player, clipVideo, editVideo].forEach((video) => {
+  if (!video) return;
+  video.addEventListener('loadedmetadata', () => {
+    video.playbackRate = playbackRate;
+  });
+});
+
+applyPlaybackRate(playbackRate);
 
 function showToast(message) {
   if (!appToast) return;
@@ -951,6 +999,7 @@ function openClip(card) {
   currentClipStarred = card.dataset.clipStarred === '1';
   currentClipStart = parseFloat(card.dataset.clipStart || '0');
   clipVideo.src = card.dataset.src;
+  clipVideo.playbackRate = playbackRate;
   clipModalStatus.textContent = currentClipStatus === 'saved' ? '· salvo' : '· não verificado';
   saveClipButton.hidden = currentClipStatus === 'saved';
   moveClipNewButton.hidden = currentClipStatus !== 'saved';
@@ -1017,6 +1066,7 @@ function openEdit(card) {
   if (!clipModal.hidden) closeClip();
   if (player) player.pause();
   editModal.hidden = false;
+  editVideo.playbackRate = playbackRate;
   const apply = () => { editVideo.currentTime = editOldStart; };
   if (editVideo.readyState >= 1) apply();
   else editVideo.addEventListener('loadedmetadata', apply, { once: true });
@@ -1462,41 +1512,111 @@ function isTypingTarget(target) {
   return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable;
 }
 
+function isButtonTarget(target) {
+  return !!(target && target.closest && target.closest('button, a'));
+}
+
+function seekVideo(video, delta) {
+  if (!video) return;
+  const duration = Number.isFinite(video.duration) && video.duration > 0
+    ? video.duration
+    : Number.POSITIVE_INFINITY;
+  try {
+    video.currentTime = Math.max(0, Math.min(duration, video.currentTime + delta));
+  } catch (error) {
+    // Video ainda sem metadados; ignora o atalho.
+  }
+}
+
+function togglePlayback(video) {
+  if (!video) return;
+  if (video.paused) video.play().catch(() => {});
+  else video.pause();
+}
+
 document.addEventListener('keydown', (event) => {
   if (!rejectModal.hidden) {
     if (event.key === 'Escape') closeReject();
     return;
   }
+
   if (!editModal.hidden) {
-    if (event.key === 'Escape') closeEdit();
+    if (event.key === 'Escape') {
+      closeEdit();
+      return;
+    }
+    if (isTypingTarget(event.target)) return;
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      seekVideo(editVideo, -5);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      seekVideo(editVideo, 5);
+      return;
+    }
+    if (event.key === ' ') {
+      if (isButtonTarget(event.target)) return;
+      event.preventDefault();
+      togglePlayback(editVideo);
+    }
     return;
   }
+
   if (isTypingTarget(event.target)) return;
-  if (clipModal.hidden) return;
-  if (event.key === 'Escape') {
-    closeClip();
+
+  if (!clipModal.hidden) {
+    if (event.key === 'Escape') {
+      closeClip();
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      if (event.shiftKey) openAdjacent(-1);
+      else seekVideo(clipVideo, -5);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      if (event.shiftKey) openAdjacent(1);
+      else seekVideo(clipVideo, 5);
+      return;
+    }
+    if (event.key === ' ') {
+      if (isButtonTarget(event.target)) return;
+      event.preventDefault();
+      togglePlayback(clipVideo);
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === 'e') {
+      event.preventDefault();
+      if (currentClipCard) openEdit(currentClipCard);
+    } else if (key === 's') {
+      event.preventDefault();
+      if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true);
+    } else if (key === 'd') {
+      event.preventDefault();
+      if (currentClipId) openReject(currentClipId, currentClipCard);
+    }
     return;
   }
-  const key = event.key.toLowerCase();
-  if (key === 'e') {
+
+  if (event.key === 'ArrowLeft') {
     event.preventDefault();
-    if (currentClipCard) openEdit(currentClipCard);
-  } else if (key === 's') {
+    seekVideo(player, -5);
+    return;
+  }
+  if (event.key === 'ArrowRight') {
     event.preventDefault();
-    if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true);
-  } else if (key === 'd') {
+    seekVideo(player, 5);
+    return;
+  }
+  if (event.key === ' ') {
+    if (isButtonTarget(event.target) || isTypingTarget(event.target)) return;
     event.preventDefault();
-    if (currentClipId) openReject(currentClipId, currentClipCard);
-  } else if (event.key === 'ArrowRight') {
-    event.preventDefault();
-    openAdjacent(1);
-  } else if (event.key === 'ArrowLeft') {
-    event.preventDefault();
-    openAdjacent(-1);
-  } else if (event.key === ' ') {
-    event.preventDefault();
-    if (clipVideo.paused) clipVideo.play().catch(() => {});
-    else clipVideo.pause();
+    togglePlayback(player);
   }
 });
 
