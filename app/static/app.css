@@ -69,6 +69,12 @@ a {
   font-weight: 800;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .nav {
   display: flex;
   gap: 18px;
@@ -78,6 +84,29 @@ a {
 
 .nav a:hover {
   color: var(--text);
+}
+
+.mute-toggle {
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.mute-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mute-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .mute-label {
+    display: none;
+  }
 }
 
 .container {

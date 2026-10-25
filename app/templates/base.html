@@ -17,11 +17,16 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/"><img class="brand-logo" src="/static/brand/volleytrack-mark-transparent.png" alt="VolleyTrak"><span>VolleyTrak</span></a>
-    <nav class="nav">
-      <a href="/">Partidas</a>
-      <a href="/aprendizado">Aprendizado</a>
-      <a href="/players">Jogadores</a>
-    </nav>
+    <div class="topbar-right">
+      <nav class="nav">
+        <a href="/">Partidas</a>
+        <a href="/aprendizado">Aprendizado</a>
+        <a href="/players">Jogadores</a>
+      </nav>
+      <button id="mute-toggle" class="button ghost small mute-toggle" type="button" aria-pressed="false" title="Mutar vídeos (M)">
+        <span class="mute-icon">&#128266;</span><span class="mute-label">Som</span>
+      </button>
+    </div>
   </header>
   <main class="container">
     {% block content %}{% endblock %}

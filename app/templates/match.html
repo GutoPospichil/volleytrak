@@ -49,7 +49,7 @@
     <p class="muted small">Tempo atual: <span id="current-time">0.0</span>s</p>
     <div class="video-toolbar">
       {{ speed_control() }}
-      <span class="muted small">←/→ volta/avança 5s · Espaço play/pause</span>
+      <span class="muted small">←/→ volta/avança 5s · Espaço play/pause · M mudo</span>
     </div>
     <div class="manual-cut" id="manual-cut">
       <div class="card-head">
@@ -366,7 +366,7 @@
       <p id="clip-edit-note" class="muted small" hidden></p>
       {{ speed_control() }}
       <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
-      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause</p>
+      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause · M mudo</p>
     </div>
   </div>
 
@@ -488,7 +488,7 @@
         <div class="edit-controls">
           <p id="edit-info" class="muted small"></p>
           {{ speed_control() }}
-          <p class="muted small">←/→ volta/avança 5s · Espaço play/pause</p>
+          <p class="muted small">←/→ volta/avança 5s · Espaço play/pause · M mudo</p>
           <div class="edit-grid">
             <label>Início (s)
               <input id="edit-start" type="number" min="0" step="0.1">
