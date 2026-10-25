@@ -1218,3 +1218,10 @@ video {
 .app-toast[hidden] {
   display: none;
 }
+
+.brand-logo {
+  display: block;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}

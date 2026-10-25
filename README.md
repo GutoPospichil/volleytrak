@@ -248,3 +248,24 @@ O pipeline agora mede o **movimento dentro da quadra** em aproximadamente 1 amos
 - a opção **Ignorar quadra vazia/parada** fica marcada por padrão ao gerar novamente.
 
 Isso remove principalmente os trechos com quadra vazia ou todos parados. Tempo morto com jogadores se movimentando, comemoração ou banco agitado ainda pode passar; nesses casos o feedback de **Tempo morto** continua sendo o ajuste correto.
+
+## Marca e app desktop
+
+A marca do VolleyTrak agora usa o logo VT:
+
+- logo no topo do app, favicon, ícone do instalador e ícones PWA;
+- manifest em `/static/manifest.webmanifest` (o navegador pode oferecer **Instalar VolleyTrak**).
+
+### Abrir como aplicativo
+
+Use o atalho **VolleyTrak** da área de trabalho ou:
+
+```text
+Abrir VolleyTrak (desktop).cmd
+```
+
+Isso abre uma janela nativa do Windows via WebView2 (pywebview), sem barra de navegador, com o ícone do VolleyTrak. O servidor Python inicia junto e é encerrado quando a janela fecha.
+
+A interface continua sendo HTML/CSS/JS por dentro — o processamento pesado é Python/OpenCV/ONNX. Isso permite ter cara de app sem reescrever toda a interface. As opções para uma interface totalmente nativa no futuro são Tauri (mais leve, exige Rust e empacotar o Python como sidecar) ou WPF/MAUI/Flutter (reescrita completa, maior esforço e sem ganho no processamento). O caminho recomendado é evoluir o wrapper desktop atual e só trocar a UI se houver uma necessidade real de design/interação.
+
+Também existe o fallback `Abrir VolleyTrak (app).cmd`, que abre o Chrome/Edge em modo janela de app, sem barra de endereço.

@@ -1,22 +1,21 @@
-# VolleyTrak 0.3.10 beta
+# VolleyTrak 0.3.11 beta
 
-## Filtro de quadra vazia/parada
-- O pipeline mede o movimento dentro da quadra em ~1 amostra por segundo.
-- Usa os 4 pontos da calibração para criar uma máscara da quadra.
-- Clipes com movimento médio abaixo de **4** são descartados.
-- O resultado fica em `activity.json` e é reaproveitado nas próximas gerações.
-- Primeira análise leva cerca de 80 segundos para uma partida de 52 minutos.
-- Nova opção **Ignorar quadra vazia/parada**, marcada por padrão ao gerar novamente.
-- Se o arquivo de atividade não existir, ele é calculado automaticamente na geração.
-- Clipes salvos e manuais são preservados.
+## Marca
+- Logo VT VolleyTrak no topo, favicon, ícone do instalador e ícones PWA.
+- Manifest PWA em `/static/manifest.webmanifest`; o navegador pode oferecer **Instalar VolleyTrak**.
+- Atalhos do Windows usam o ícone do VolleyTrak.
 
-## Base da 0.3.9
-- Duplicados após edição: o app detecta sobreposição, pergunta e marca como duplicado.
-- Duplicados não entram no ranker (peso 0), para não ensinar conteúdo ruim.
-- Após editar e salvar um clipe não verificado, a revisão avança para o próximo.
+## VolleyTrak como aplicativo desktop
+- Nova janela nativa via WebView2 (pywebview), sem barra de navegador.
+- O atalho **VolleyTrak** da área de trabalho abre o app, inicia o servidor Python junto e fecha o servidor quando a janela fecha.
+- A interface continua sendo a mesma HTML/CSS/JS; o processamento pesado segue em Python/OpenCV/ONNX.
+- Fallback **VolleyTrak (navegador)** e **VolleyTrak (janela web)** para abrir no Chrome/Edge.
+- Dependência `pywebview` incluída no Python portátil.
 
-## Limitação
-- O filtro remove quadra vazia e todos parados. Tempo morto com jogadores se movimentando, comemoração ou banco agitado ainda pode passar; nesses casos o motivo **Tempo morto** continua correto.
+## Base da 0.3.10
+- Filtro de quadra vazia/parada por movimento dentro da quadra.
+- Opção **Ignorar quadra vazia/parada** marcada por padrão.
+- Duplicados após edição e edição com aprendizado.
 
 Baixe todas as partes do Portable ou do Setup e extraia a `.001` com 7-Zip.
-Windows 10/11 x64, driver NVIDIA e ~8 GB livres.
+Windows 10/11 x64, WebView2 (já vem com o Windows/Edge), driver NVIDIA e ~8 GB livres.

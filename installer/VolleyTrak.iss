@@ -1,6 +1,6 @@
 #define Root "D:\volleytrak"
 #define AppName "VolleyTrak"
-#define AppVersion "0.3.10"
+#define AppVersion "0.3.11"
 #define AppPublisher "VolleyTrak Local"
 
 [Setup]
@@ -8,6 +8,7 @@ AppId={{5E8C2A0D-3B7B-4B5A-9B0E-3C8D5A7F1E21}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+SetupIconFile={#Root}\installer\VolleyTrak.ico
 DefaultDirName={localappdata}\Programs\VolleyTrak
 DefaultGroupName=VolleyTrak
 DisableProgramGroupPage=yes
@@ -20,7 +21,7 @@ Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern
 UninstallDisplayName=VolleyTrak
-UninstallDisplayIcon={app}\Abrir VolleyTrak.cmd
+UninstallDisplayIcon={app}\VolleyTrak.ico
 ExtraDiskSpaceRequired=8589934592
 SetupLogging=yes
 
@@ -28,7 +29,7 @@ SetupLogging=yes
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Ârea de Trabalho"; GroupDescription: "Atalhos:"
+Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"
 
 [Files]
 Source: "{#Root}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -41,6 +42,9 @@ Source: "{#Root}\data\feedback_profile.json"; DestDir: "{localappdata}\VolleyTra
 Source: "{#Root}\data\feedback_ranker.json"; DestDir: "{localappdata}\VolleyTrakData"; Flags: ignoreversion
 Source: "{#Root}\installer\start-portable.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\installer\Abrir VolleyTrak.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Root}\installer\Abrir VolleyTrak (app).cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Root}\installer\VolleyTrak.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Root}\desktop.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\TRANSFER.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -53,9 +57,11 @@ Name: "{localappdata}\VolleyTrakData\videos"
 Name: "{localappdata}\VolleyTrakData\jobs"
 
 [Icons]
-Name: "{group}\VolleyTrak"; Filename: "{app}\Abrir VolleyTrak.cmd"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 138
+Name: "{group}\VolleyTrak"; Filename: "{app}\portable-python\pythonw.exe"; Parameters: """{app}\desktop.py"""; WorkingDir: "{app}"; IconFilename: "{app}\VolleyTrak.ico"
+Name: "{group}\VolleyTrak (navegador)"; Filename: "{app}\Abrir VolleyTrak.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\VolleyTrak.ico"
+Name: "{group}\VolleyTrak (janela web)"; Filename: "{app}\Abrir VolleyTrak (app).cmd"; WorkingDir: "{app}"; IconFilename: "{app}\VolleyTrak.ico"
 Name: "{group}\Desinstalar VolleyTrak"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\VolleyTrak"; Filename: "{app}\Abrir VolleyTrak.cmd"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 138; Tasks: desktopicon
+Name: "{autodesktop}\VolleyTrak"; Filename: "{app}\portable-python\pythonw.exe"; Parameters: """{app}\desktop.py"""; WorkingDir: "{app}"; IconFilename: "{app}\VolleyTrak.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Abrir VolleyTrak.cmd"; Description: "Abrir o VolleyTrak agora"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\portable-python\pythonw.exe"; Parameters: """{app}\desktop.py"""; Description: "Abrir o VolleyTrak agora"; Flags: nowait postinstall skipifsilent

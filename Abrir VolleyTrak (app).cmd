@@ -1,0 +1,31 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+
+netstat -ano | findstr ":8000" | findstr "LISTENING" >nul
+if not errorlevel 1 goto open
+
+start "VolleyTrak" /min cmd /c ""%~dp0start.cmd""
+echo Aguardando o servidor iniciar...
+for /l %%I in (1,1,30) do (
+    curl.exe -s -o NUL --max-time 1 http://127.0.0.1:8000/
+    if not errorlevel 1 goto open
+    timeout /t 1 /nobreak >nul
+)
+
+echo Nao foi possivel iniciar o VolleyTrak.
+echo Abra manualmente start.cmd e veja a mensagem de erro.
+pause
+exit /b 1
+
+:open
+set "BROWSER="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+if defined BROWSER (
+    start "" "%BROWSER%" --app=http://127.0.0.1:8000 --window-size=1440,900
+) else (
+    start "" "http://127.0.0.1:8000"
+)
+exit /b 0
