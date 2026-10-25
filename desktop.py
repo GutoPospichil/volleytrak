@@ -15,6 +15,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
+def _log_path() -> Path:
+    portable = ROOT / "data"
+    if portable.is_dir():
+        return portable / "desktop.log"
+    local = Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "VolleyTrakData"
+    local.mkdir(parents=True, exist_ok=True)
+    return local / "desktop.log"
+
+
+# pythonw.exe nao tem stdout/stderr. Sem isso, qualquer print/erro fecha o app.
+if sys.stdout is None or sys.stderr is None:
+    try:
+        _log = open(_log_path(), "a", encoding="utf-8", buffering=1)
+        sys.stdout = _log
+        sys.stderr = _log
+    except Exception:
+        try:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+            sys.stderr = sys.stdout
+        except Exception:
+            pass
+
+
 def configure_data_dir() -> Path:
     if not os.getenv("VOLLEYTRAK_DATA"):
         portable = ROOT / "data"
@@ -186,4 +209,19 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        try:
+            show_error(
+                "O VolleyTrak encontrou um erro ao abrir.\n\n"
+                + traceback.format_exc(limit=4)
+            )
+        except Exception:
+            pass
+        raise SystemExit(1)
