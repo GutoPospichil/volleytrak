@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +9,7 @@ from scipy import signal
 from scipy.io import wavfile
 
 from app.config import JOB_DIR
+from app.subprocess_utils import run_hidden
 from app.db import get_match
 
 
@@ -30,7 +30,7 @@ def extract_audio(video_path: Path, wav_path: Path) -> None:
         "16000",
         str(wav_path),
     ]
-    subprocess.run(command, check=True, timeout=600)
+    run_hidden(command, check=True, timeout=600)
 
 
 def detect_whistles(

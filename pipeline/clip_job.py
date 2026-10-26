@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import JOB_DIR, ROOT
+from app.subprocess_utils import run_hidden
 from app.db import get_match, init_db, list_clip_rejections, list_clips, update_match
 
 
@@ -20,7 +21,7 @@ def log(message: str) -> None:
 
 def run(command: list[str], log_file) -> None:
     log("$ " + " ".join(command))
-    subprocess.run(
+    run_hidden(
         command,
         cwd=str(ROOT),
         stdout=log_file,
@@ -39,6 +40,7 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=0.03)
     parser.add_argument("--min-score", type=float, default=50.0)
     parser.add_argument("--max-clips", type=int, default=100)
+    parser.add_argument("--reuse-detections", action="store_true")
     args = parser.parse_args()
 
     init_db()
@@ -70,88 +72,120 @@ def main() -> int:
     with (job_dir / "clip_job.log").open("a", encoding="utf-8") as log_file:
         try:
             log("=== VolleyTrak clip job ===")
-            update_progress(args.match_id, 5, "Analisando a bola em 30 fps...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.vballnet",
-                    "--match-id",
-                    str(args.match_id),
-                    "--threshold",
-                    "0.4",
-                ],
-                log_file,
-            )
+            reuse = args.reuse_detections
+            ball_path = job_dir / "ball_vballnet.jsonl"
+            contacts_path = job_dir / "contacts.json"
+            activity_path = job_dir / "activity.json"
+            rallies_path = job_dir / "rallies_audio.json"
 
-            update_progress(args.match_id, 50, "Detectando contatos...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.contacts",
-                    "--match-id",
-                    str(args.match_id),
-                    "--input",
-                    "ball_vballnet.jsonl",
-                    "--output",
-                    "contacts.json",
-                ],
-                log_file,
-            )
-
-            if whistle_mode == "with":
-                update_progress(args.match_id, 60, "Detectando apitos...")
+            if reuse and ball_path.is_file():
+                log("reutilizando detecção de bola existente")
+                update_progress(
+                    args.match_id, 30, "Reutilizando detecção de bola existente..."
+                )
+            else:
+                update_progress(args.match_id, 5, "Analisando a bola em 30 fps...")
                 run(
                     [
                         sys.executable,
                         "-m",
-                        "pipeline.audio",
+                        "pipeline.vballnet",
                         "--match-id",
                         str(args.match_id),
                         "--threshold",
-                        str(args.threshold),
+                        "0.4",
                     ],
                     log_file,
                 )
 
-                update_progress(args.match_id, 78, "Montando rallies por apito...")
+            if reuse and contacts_path.is_file():
+                log("reutilizando contatos existentes")
+                update_progress(
+                    args.match_id, 55, "Reutilizando contatos existentes..."
+                )
+            else:
+                update_progress(args.match_id, 50, "Detectando contatos...")
                 run(
                     [
                         sys.executable,
                         "-m",
-                        "pipeline.rallies",
+                        "pipeline.contacts",
                         "--match-id",
                         str(args.match_id),
-                        "--ball",
+                        "--input",
                         "ball_vballnet.jsonl",
-                        "--contacts",
-                        "contacts.json",
                         "--output",
-                        "rallies_audio.json",
+                        "contacts.json",
                     ],
                     log_file,
                 )
+
+            if whistle_mode == "with":
+                if reuse and rallies_path.is_file():
+                    log("reutilizando apitos e rallies existentes")
+                    update_progress(
+                        args.match_id, 78, "Reutilizando apitos e rallies existentes..."
+                    )
+                else:
+                    update_progress(args.match_id, 60, "Detectando apitos...")
+                    run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pipeline.audio",
+                            "--match-id",
+                            str(args.match_id),
+                            "--threshold",
+                            str(args.threshold),
+                        ],
+                        log_file,
+                    )
+
+                    update_progress(args.match_id, 78, "Montando rallies por apito...")
+                    run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pipeline.rallies",
+                            "--match-id",
+                            str(args.match_id),
+                            "--ball",
+                            "ball_vballnet.jsonl",
+                            "--contacts",
+                            "contacts.json",
+                            "--output",
+                            "rallies_audio.json",
+                        ],
+                        log_file,
+                    )
             else:
                 (job_dir / "whistles.json").unlink(missing_ok=True)
-                (job_dir / "rallies_audio.json").unlink(missing_ok=True)
+                rallies_path.unlink(missing_ok=True)
                 update_progress(
                     args.match_id,
                     70,
                     "Modo sem apito: usando bola e contatos...",
                 )
 
-            update_progress(args.match_id, 82, "Medindo atividade visual da quadra...")
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pipeline.activity",
-                    "--match-id",
-                    str(args.match_id),
-                ],
-                log_file,
-            )
+            if reuse and activity_path.is_file():
+                log("reutilizando atividade visual existente")
+                update_progress(
+                    args.match_id, 82, "Reutilizando atividade visual da quadra..."
+                )
+            else:
+                update_progress(
+                    args.match_id, 82, "Medindo atividade visual da quadra..."
+                )
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pipeline.activity",
+                        "--match-id",
+                        str(args.match_id),
+                    ],
+                    log_file,
+                )
 
             update_progress(args.match_id, 88, "Cortando clipes...")
             clips_command = [
@@ -223,7 +257,11 @@ def main() -> int:
                 "warnings": [
                     "Atividade visual da quadra aplicada: trechos vazios/parados foram descartados.",
                     "Fluxo focado em clipes: sem pipeline de pessoas e sem vídeo anotado.",
-                    "Áudio, VballNet, contatos e o perfil/ranker aprendidos foram aplicados.",
+                    (
+                        "Modo sem apito: a segmentação usou bola, contatos e atividade visual."
+                        if whistle_mode == "without"
+                        else "Áudio, VballNet, contatos e o perfil/ranker aprendidos foram aplicados."
+                    ),
                     "Clipes salvos e rejeições anteriores foram preservados; revise os novos.",
                 ],
                 "files": {

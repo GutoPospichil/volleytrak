@@ -83,6 +83,9 @@
     <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Abrir calibração</a>
 
     <p class="muted small">Modo de áudio: <strong>{{ "Jogo sem apito" if match.whistle_mode == "without" else "Jogo com apito" }}</strong></p>
+    {% if match.whistle_mode == "without" %}
+    <button id="reprocess-with-whistle" class="button ghost small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Reprocessar com apito</button>
+    {% endif %}
     {% if feedback_profile %}
     {% set trim = feedback_profile.get("trim", {}) %}
     <hr>
@@ -197,12 +200,14 @@
     <div class="actions">
       <button id="process-clips" class="button primary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Processar clipes</button>
       <button id="generate-clips" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Gerar novamente (aprendizados)</button>
+      <button id="reprocess-no-whistle" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %} title="Ignora o áudio/apito e refaz os clipes usando bola, contatos e atividade">Reprocessar sem apito</button>
       <button id="fast-review" class="button secondary small" type="button" {% if not clips_new %}disabled{% endif %}>Revisão rápida</button>
     </div>
   </div>
   <label class="check-line"><input type="checkbox" id="use-gaps" checked> Reavaliar minutos sem clipes no mapa de calor</label>
   <label class="check-line"><input type="checkbox" id="use-activity" checked> Ignorar quadra vazia/parada</label>
   <p class="muted small">Processar clipes roda o pipeline completo (bola, áudio/contatos e rallies). Gerar novamente usa as detecções atuais, o perfil aprendido e o ranker, preserva os salvos e recria trechos de "corte errado" com o pré/pós-roll ajustado.</p>
+  <p class="muted small"><strong>Reprocessar sem apito</strong> ignora o áudio e refaz os clipes usando bola, contatos e atividade visual. Use quando o apito não for detectado corretamente. Os clipes salvos são preservados.</p>
   <details class="learned-note">
     <summary>O que é considerado ao gerar novamente</summary>
     <ul class="muted small">
@@ -1751,6 +1756,41 @@ if (generateClips) {
       location.reload();
     }, 180000);
   });
+}
+
+async function reprocessMatch(button, mode, label, message) {
+  if (!confirm(message)) return;
+  button.disabled = true;
+  button.textContent = 'Reprocessando...';
+  const response = await fetch(`/api/matches/${matchId}/reprocess?whistle_mode=${mode}`, { method: 'POST' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    alert(error.detail || 'Não foi possível iniciar o reprocessamento.');
+    button.disabled = false;
+    button.textContent = label;
+    return;
+  }
+  location.reload();
+}
+
+const reprocessNoWhistle = document.getElementById('reprocess-no-whistle');
+if (reprocessNoWhistle) {
+  reprocessNoWhistle.addEventListener('click', () => reprocessMatch(
+    reprocessNoWhistle,
+    'without',
+    'Reprocessar sem apito',
+    'Reprocessar a partida sem apito? O áudio será ignorado e os clipes não salvos serão refeitos. Os clipes salvos são preservados.'
+  ));
+}
+
+const reprocessWithWhistle = document.getElementById('reprocess-with-whistle');
+if (reprocessWithWhistle) {
+  reprocessWithWhistle.addEventListener('click', () => reprocessMatch(
+    reprocessWithWhistle,
+    'with',
+    'Reprocessar com apito',
+    'Reprocessar a partida com apito? O áudio será analisado novamente e os clipes não salvos serão refeitos. Os clipes salvos são preservados.'
+  ));
 }
 
 const restoreSeek = sessionStorage.getItem('vt-seek');

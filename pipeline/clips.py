@@ -4,13 +4,13 @@ import argparse
 import bisect
 import json
 import math
-import subprocess
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
 from app.clip_paths import clip_dir_for_match
+from app.subprocess_utils import run_hidden
 from app.config import JOB_DIR
 from app.constants import CLIP_REJECTION_CANONICAL
 from app.db import (
@@ -33,9 +33,12 @@ def trim_dead_time(
     active_speed: float = 2.5,
     pre_roll: float = 1.0,
     post_roll: float = 1.8,
+    min_duration: float = 0.0,
 ) -> tuple[list[dict], int]:
     trimmed = 0
     for window in windows:
+        if min_duration and (window["end"] - window["start"]) < min_duration:
+            continue
         samples: list[tuple[float, list[float]]] = []
         for record in records:
             if record["t"] < window["start"] or record["t"] > window["end"]:
@@ -528,7 +531,7 @@ def cut_clip(video_path: Path, start: float, end: float, output_path: Path) -> b
         str(output_path),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True, timeout=300)
+        run_hidden(command, check=True, capture_output=True, timeout=300)
         return output_path.is_file() and output_path.stat().st_size > 0
     except Exception as exc:
         print(f"[aviso] falha ao cortar {start:.1f}-{end:.1f}: {exc}")
@@ -554,7 +557,7 @@ def make_thumb(clip_path: Path, thumb_path: Path, seek: float = 1.5) -> bool:
         str(thumb_path),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True, timeout=60)
+        run_hidden(command, check=True, capture_output=True, timeout=60)
         return thumb_path.is_file()
     except Exception:
         thumb_path.unlink(missing_ok=True)
@@ -675,15 +678,23 @@ def main() -> int:
         f"lacunas_sem_clipes={len(gaps)} candidatos_lacuna={len(gap_candidates)} "
         f"recuperados={len(recovered)}"
     )
-    contact_candidates = (
-        contact_windows(contacts_payload, records_for_duration, duration)
-        if contacts_payload
-        else []
-    )
     use_audio = (
         not args.no_audio
         and (match["whistle_mode"] if "whistle_mode" in match.keys() else "with")
         != "without"
+    )
+    contact_candidates = (
+        contact_windows(
+            contacts_payload,
+            records_for_duration,
+            duration,
+            max_gap=8.0 if not use_audio else 4.0,
+            min_contacts=1 if not use_audio else 3,
+            pre_pad=4.0 if not use_audio else 2.5,
+            post_pad=4.0 if not use_audio else 1.5,
+        )
+        if contacts_payload
+        else []
     )
     print(
         f"apito={'sim' if use_audio else 'nao'} "
@@ -737,8 +748,11 @@ def main() -> int:
                 return
         windows.append(candidate)
 
+    contact_min_ball_pct = (
+        min_ball_pct if use_audio else max(0.04, min_ball_pct * 0.25)
+    )
     for candidate in sorted(contact_candidates, key=lambda item: item["start"]):
-        if float(candidate.get("ball_pct", 0.0)) < min_ball_pct:
+        if float(candidate.get("ball_pct", 0.0)) < contact_min_ball_pct:
             continue
         add_complement(candidate)
 
@@ -798,6 +812,7 @@ def main() -> int:
         active_speed=float(trim_profile.get("active_speed", 2.5)),
         pre_roll=float(trim_profile.get("pre_roll", 1.0)),
         post_roll=float(trim_profile.get("post_roll", 1.8)),
+        min_duration=0.0 if use_audio else 15.0,
     )
     if trimmed_count:
         print(f"tempo morto aparado em {trimmed_count} candidato(s)")

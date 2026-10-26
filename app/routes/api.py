@@ -16,6 +16,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from ..clip_paths import clip_dir_for_match, clip_folder_for_match
+from ..subprocess_utils import popen_hidden, run_hidden
 from ..config import (
     DATA_DIR,
     JOB_DIR,
@@ -221,16 +222,14 @@ def process_match(match_id: int):
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
     environment.setdefault("PYTHONIOENCODING", "utf-8")
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     try:
-        subprocess.Popen(
+        popen_hidden(
             command,
             cwd=str(ROOT),
             stdout=log_file,
             stderr=subprocess.STDOUT,
             env=environment,
-            creationflags=flags,
         )
     except Exception as exc:
         update_match(match_id, status="error", message=f"Falha ao iniciar pipeline: {exc}")
@@ -749,7 +748,7 @@ def star_clip(clip_id: int, payload: ClipStarIn):
         )
     _invalidate_highlight(clip["match_id"])
     if payload.starred or clip["status"] == "saved":
-        subprocess.run(
+        run_hidden(
             [sys.executable, "-m", "pipeline.clip_score", "--match-id", str(clip["match_id"])],
             cwd=str(ROOT),
             capture_output=True,
@@ -825,7 +824,7 @@ def build_highlight(match_id: int):
         str(temp_path),
     ]
     try:
-        result = subprocess.run(command, capture_output=True, timeout=900)
+        result = run_hidden(command, capture_output=True, timeout=900)
         if result.returncode != 0 or not temp_path.is_file() or temp_path.stat().st_size == 0:
             fallback = [
                 "ffmpeg",
@@ -855,7 +854,7 @@ def build_highlight(match_id: int):
                 "+faststart",
                 str(temp_path),
             ]
-            subprocess.run(fallback, check=True, capture_output=True, timeout=900)
+            run_hidden(fallback, check=True, capture_output=True, timeout=900)
     except Exception as exc:
         temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Falha ao montar highlight: {exc}")
@@ -882,7 +881,7 @@ def score_saved_clips(match_id: int):
     _require_match(match_id)
     if not list_clips(match_id, "saved"):
         raise HTTPException(status_code=400, detail="Nenhum clipe salvo para pontuar")
-    result = subprocess.run(
+    result = run_hidden(
         [sys.executable, "-m", "pipeline.clip_score", "--match-id", str(match_id)],
         cwd=str(ROOT),
         capture_output=True,
@@ -924,15 +923,13 @@ def process_clips(match_id: int):
     ]
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        subprocess.Popen(
+        popen_hidden(
             command,
             cwd=str(ROOT),
             stdout=log_file,
             stderr=subprocess.STDOUT,
             env=environment,
-            creationflags=flags,
         )
     except Exception as exc:
         update_match(match_id, status="error", message=f"Falha ao iniciar clipes: {exc}")
@@ -970,21 +967,83 @@ def generate_clips(
         command.append("--no-activity")
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        subprocess.Popen(
+        popen_hidden(
             command,
             cwd=str(ROOT),
             stdout=log_file,
             stderr=subprocess.STDOUT,
             env=environment,
-            creationflags=flags,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Falha ao iniciar clipes: {exc}")
     finally:
         log_file.close()
     return {"ok": True}
+
+
+@router.post("/matches/{match_id}/reprocess")
+def reprocess_match(match_id: int, whistle_mode: str = "without"):
+    if whistle_mode not in {"with", "without"}:
+        raise HTTPException(status_code=400, detail="Modo de apito inválido")
+    row = _require_match(match_id)
+    if row["status"] == "processing":
+        raise HTTPException(
+            status_code=409, detail="Já existe processamento em andamento"
+        )
+    if not Path(row["video_path"]).is_file():
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo não encontrado")
+    if not row["calibration"]:
+        raise HTTPException(
+            status_code=400, detail="Calibre a quadra antes de reprocessar"
+        )
+
+    job_dir = JOB_DIR / f"match-{match_id}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    log_file = (job_dir / "clip_job.log").open("ab")
+    update_match(
+        match_id,
+        whistle_mode=whistle_mode,
+        status="processing",
+        progress=0,
+        message=(
+            "Reprocessando sem apito..."
+            if whistle_mode == "without"
+            else "Reprocessando com apito..."
+        ),
+        result=None,
+        annotated_path=None,
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "pipeline.clip_job",
+        "--match-id",
+        str(match_id),
+        "--reuse-detections",
+    ]
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
+    try:
+        popen_hidden(
+            command,
+            cwd=str(ROOT),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            env=environment,
+        )
+    except Exception as exc:
+        update_match(
+            match_id,
+            status="error",
+            message=f"Falha ao reprocessar: {exc}"[:500],
+        )
+        raise HTTPException(
+            status_code=500, detail="Não foi possível iniciar o reprocessamento"
+        )
+    finally:
+        log_file.close()
+    return {"ok": True, "match_id": match_id, "whistle_mode": whistle_mode}
 
 
 @router.get("/learning/stats")
@@ -1125,9 +1184,9 @@ def _open_folder(path: Path) -> None:
     if os.name == "nt":
         os.startfile(str(path))
     elif sys.platform == "darwin":
-        subprocess.Popen(["open", str(path)])
+        popen_hidden(["open", str(path)])
     else:
-        subprocess.Popen(["xdg-open", str(path)])
+        popen_hidden(["xdg-open", str(path)])
 
 
 @router.get("/settings")
