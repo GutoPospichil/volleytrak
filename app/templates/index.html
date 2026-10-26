@@ -101,7 +101,10 @@
 <section class="card">
   <div class="card-head">
     <h2>Partidas</h2>
-    <span class="muted small">{{ matches|length }} registrada(s)</span>
+    <div class="actions">
+      <a class="button ghost small" href="/clipes">Clipes salvos</a>
+      <span class="muted small">{{ matches|length }} registrada(s)</span>
+    </div>
   </div>
   {% if matches %}
   <div class="match-list">
@@ -112,6 +115,7 @@
         <span class="muted small">{{ m.opponent or "Sem adversário" }}{% if m.played_on %} · {{ m.played_on }}{% endif %}</span>
       </div>
       <div class="match-side">
+        {% if not m.video_available %}<span class="badge removed">Sem vídeo</span>{% endif %}
         <span class="badge {{ m.status }}">{{ status_labels.get(m.status, m.status) }}</span>
         {% if m.status == "processing" %}
         <span class="muted small">{{ m.progress|round(0)|int }}%</span>

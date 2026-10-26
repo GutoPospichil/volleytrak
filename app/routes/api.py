@@ -186,6 +186,77 @@ def remove_match(match_id: int):
     return {"ok": True}
 
 
+@router.post("/matches/{match_id}/remove-video")
+def remove_match_video(
+    match_id: int,
+    confirm: bool = False,
+    allow_external: bool = False,
+):
+    if not confirm:
+        raise HTTPException(
+            status_code=400, detail="Confirme a exclusão do vídeo original"
+        )
+    row = _require_match(match_id)
+    if row["status"] == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="Aguarde o processamento terminar antes de excluir o vídeo",
+        )
+    saved_clips = list_clips(match_id, "saved")
+    raw_path = row["video_path"] or ""
+    path = Path(raw_path) if raw_path else None
+    deleted = False
+    already_missing = False
+    if path is not None:
+        if path.suffix.lower() not in VIDEO_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, detail="O arquivo registrado não é um vídeo"
+            )
+        if not path.is_file():
+            already_missing = True
+        else:
+            if row["source"] == "upload":
+                try:
+                    path.resolve().relative_to(VIDEO_DIR.resolve())
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="O vídeo não está na pasta de vídeos do VolleyTrak",
+                    )
+            elif not allow_external:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Este vídeo está fora da pasta do VolleyTrak. "
+                        "Confirme explicitamente para apagar o arquivo original."
+                    ),
+                )
+            try:
+                path.unlink()
+                deleted = True
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Não foi possível apagar o vídeo: {exc}",
+                )
+
+    update_match(
+        match_id,
+        video_path="",
+        status="done",
+        progress=100,
+        message="Vídeo original removido. Clipes preservados.",
+        annotated_path=None,
+    )
+    return {
+        "ok": True,
+        "deleted": deleted,
+        "already_missing": already_missing,
+        "saved_clips": len(saved_clips),
+        "video_path": raw_path,
+    }
+
+
 @router.post("/matches/{match_id}/calibration")
 def save_calibration(match_id: int, payload: CalibrationIn):
     _require_match(match_id)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 
@@ -20,6 +21,8 @@ def match_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     match = dict(row)
     match["calibration"] = parse_json(match.get("calibration"))
     match["result"] = parse_json(match.get("result"))
+    video_path = match.get("video_path") or ""
+    match["video_available"] = bool(video_path) and Path(video_path).is_file()
     return match
 
 

@@ -1,6 +1,6 @@
 ﻿#define Root "D:\volleytrak"
 #define AppName "VolleyTrak"
-#define AppVersion "0.3.18"
+#define AppVersion "0.3.19"
 #define AppPublisher "VolleyTrak Local"
 
 [Setup]

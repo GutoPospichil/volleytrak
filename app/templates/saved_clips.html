@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Clipes salvos · VolleyTrak{% endblock %}
+{% block content %}
+<div class="page-head library-head">
+  <div>
+    <p class="eyebrow">Biblioteca local</p>
+    <h1>Clipes salvos</h1>
+    <p class="muted">Assista aos clipes salvos direto pelo app. O vídeo original pode ser excluído do disco sem apagar os clipes.</p>
+  </div>
+  <div class="library-summary">
+    <span><strong>{{ total_clips }}</strong> clipes</span>
+    <span><strong>{{ total_matches }}</strong> partidas</span>
+    <span><strong>{{ total_duration_label }}</strong></span>
+    <span><strong>{{ total_size_label }}</strong></span>
+  </div>
+</div>
+
+{% if groups %}
+<section class="card library-toolbar">
+  <input id="library-search" type="search" placeholder="Buscar por partida, adversário ou data...">
+  <span id="library-count" class="muted small">{{ total_clips }} clipe(s)</span>
+</section>
+
+{% for group in groups %}
+<section class="card library-group" data-library-group data-match-id="{{ group.id }}" data-search="{{ (group.title ~ ' ' ~ group.opponent ~ ' ' ~ group.played_on)|lower }}">
+  <div class="card-head">
+    <div>
+      <h2>{{ group.title }}</h2>
+      <p class="muted small">
+        {{ group.opponent or "Sem adversário" }}{% if group.played_on %} · {{ group.played_on }}{% endif %}
+        · {{ group.saved_count }} clipe(s) · {{ group.duration_label }} · {{ group.size_label }}
+        {% if not group.video_available %}<span class="badge removed">Vídeo removido</span>{% endif %}
+      </p>
+    </div>
+    <div class="actions">
+      <button class="button ghost small" type="button" data-open-folder="{{ group.id }}">Abrir pasta</button>
+      <a class="button ghost small" href="/matches/{{ group.id }}?tab=saved">Abrir partida</a>
+      {% if group.video_available %}
+      <button
+        class="button ghost small"
+        type="button"
+        data-remove-video="{{ group.id }}"
+        data-video-path="{{ group.video_path }}"
+        data-source="{{ group.source }}"
+        data-saved="{{ group.saved_count }}"
+        data-title="{{ group.title }}"
+        {% if group.processing %}disabled title="Aguarde o processamento terminar"{% endif %}
+      >Excluir vídeo original</button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="clip-grid library-clips">
+    {% for clip in group.clips %}
+    <article
+      class="clip-card library-card"
+      data-library-card
+      data-clip-id="{{ clip.id }}"
+      data-match-id="{{ group.id }}"
+      data-src="/api/matches/{{ group.id }}/clips/{{ clip.id }}"
+      data-title="{{ group.title }}"
+      data-time="{{ clip.start_label }}–{{ clip.end_label }}"
+      data-available="{{ 1 if clip.available else 0 }}"
+    >
+      <div class="clip-media">
+        <button class="clip-open" type="button" data-play-clip {% if not clip.available %}disabled{% endif %}>
+          {% if clip.thumb %}
+          <img src="/api/matches/{{ group.id }}/clips/{{ clip.id }}/thumb" alt="Clipe em {{ clip.start_label }}" loading="lazy">
+          {% else %}
+          <span class="clip-placeholder">Clipe</span>
+          {% endif %}
+          {% if clip.available %}<span class="library-play">▶</span>{% endif %}
+          {% if clip.starred %}<span class="clip-star-badge" title="Favorito">&#9733;</span>{% endif %}
+          {% if not clip.available %}<span class="clip-source manual">Arquivo ausente</span>{% endif %}
+        </button>
+        <span class="clip-time static">{{ clip.start_label }} – {{ clip.end_label }}</span>
+      </div>
+      <div class="library-card-body">
+        <strong>{{ clip.start_label }} – {{ clip.end_label }}</strong>
+        <span class="muted small">{{ clip.duration_label }} · {{ clip.size_label }}</span>
+      </div>
+      <div class="clip-actions">
+        <button class="button secondary small" type="button" data-play-clip {% if not clip.available %}disabled{% endif %}>Assistir</button>
+        <button class="button ghost small" type="button" data-open-folder="{{ group.id }}">Pasta</button>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<p id="library-empty" class="empty" hidden>Nenhum clipe encontrado para essa busca.</p>
+
+<div id="library-modal" class="modal" hidden>
+  <div class="modal-box library-modal-box">
+    <div class="card-head">
+      <div>
+        <strong id="library-modal-title">Clipe</strong>
+        <span id="library-modal-meta" class="muted small"></span>
+      </div>
+      <button id="close-library" class="button ghost small" type="button">Fechar</button>
+    </div>
+    <video id="library-video" controls playsinline preload="metadata"></video>
+    <div class="actions library-modal-actions">
+      <button id="library-open-folder" class="button secondary small" type="button">Abrir pasta</button>
+      <a id="library-open-match" class="button secondary small" href="#">Ver partida</a>
+      <a id="library-download" class="button ghost small" href="#" download>Baixar clipe</a>
+      <button id="library-remove-saved" class="button ghost small" type="button">Remover dos salvos</button>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<p class="empty">Nenhum clipe salvo ainda. Abra uma partida e salve os rallies bons.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const libraryCards = [...document.querySelectorAll('[data-library-card]')];
+const libraryModal = document.getElementById('library-modal');
+const libraryVideo = document.getElementById('library-video');
+const libraryModalTitle = document.getElementById('library-modal-title');
+const libraryModalMeta = document.getElementById('library-modal-meta');
+const libraryOpenMatch = document.getElementById('library-open-match');
+const libraryDownload = document.getElementById('library-download');
+const libraryOpenFolder = document.getElementById('library-open-folder');
+const libraryRemoveSaved = document.getElementById('library-remove-saved');
+const librarySearch = document.getElementById('library-search');
+const libraryEmpty = document.getElementById('library-empty');
+const libraryCount = document.getElementById('library-count');
+let currentLibraryCard = null;
+
+function closeLibrary() {
+  if (!libraryModal) return;
+  libraryModal.hidden = true;
+  libraryVideo.pause();
+  libraryVideo.removeAttribute('src');
+  libraryVideo.load();
+  currentLibraryCard = null;
+}
+
+function openLibrary(card) {
+  if (!card || card.dataset.available !== '1') {
+    alert('O arquivo deste clipe não foi encontrado.');
+    return;
+  }
+  currentLibraryCard = card;
+  libraryVideo.src = card.dataset.src;
+  const rate = parseFloat(localStorage.getItem('vt-playback-rate') || '1') || 1;
+  libraryVideo.playbackRate = rate;
+  libraryModalTitle.textContent = card.dataset.title;
+  libraryModalMeta.textContent = card.dataset.time;
+  libraryOpenMatch.href = `/matches/${card.dataset.matchId}?tab=saved`;
+  libraryDownload.href = card.dataset.src;
+  libraryDownload.setAttribute('download', `clipe-${card.dataset.clipId}.mp4`);
+  libraryModal.hidden = false;
+  libraryVideo.play().catch(() => {});
+}
+
+if (libraryModal) {
+  libraryCards.forEach((card) => {
+    card.querySelectorAll('[data-play-clip]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openLibrary(card);
+      });
+    });
+  });
+
+  document.getElementById('close-library').addEventListener('click', closeLibrary);
+  libraryModal.addEventListener('click', (event) => {
+    if (event.target === libraryModal) closeLibrary();
+  });
+}
+
+document.querySelectorAll('[data-open-folder]').forEach((button) => {
+  button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const matchId = button.dataset.openFolder;
+    const response = await fetch(`/api/settings/open-folder?match_id=${matchId}`, { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível abrir a pasta.');
+    }
+  });
+});
+
+if (libraryOpenFolder) {
+  libraryOpenFolder.addEventListener('click', async () => {
+    if (!currentLibraryCard) return;
+    const matchId = currentLibraryCard.dataset.matchId;
+    const response = await fetch(`/api/settings/open-folder?match_id=${matchId}`, { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível abrir a pasta.');
+    }
+  });
+}
+
+if (libraryRemoveSaved) {
+  libraryRemoveSaved.addEventListener('click', async () => {
+    if (!currentLibraryCard) return;
+    if (!confirm('Remover este clipe dos salvos? Ele volta para os não verificados da partida.')) return;
+    libraryRemoveSaved.disabled = true;
+    const response = await fetch(`/api/clips/${currentLibraryCard.dataset.clipId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'new' })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível remover o clipe dos salvos.');
+      libraryRemoveSaved.disabled = false;
+      return;
+    }
+    location.reload();
+  });
+}
+
+document.querySelectorAll('[data-remove-video]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const title = button.dataset.title;
+    const path = button.dataset.videoPath;
+    const saved = button.dataset.saved;
+    const external = button.dataset.source !== 'upload';
+    const noClips = saved === '0'
+      ? '\n\nATENÇÃO: esta partida não tem clipes salvos.'
+      : '';
+    const extra = external
+      ? '\n\nATENÇÃO: este vídeo está fora da pasta do VolleyTrak. O arquivo original do seu PC também será apagado.'
+      : '';
+    const message = `Excluir o vídeo original de "${title}" do disco?\n\nArquivo: ${path}\nClipes salvos preservados: ${saved}${noClips}${extra}\n\nEssa ação não pode ser desfeita.`;
+    if (!confirm(message)) return;
+    button.disabled = true;
+    button.textContent = 'Excluindo...';
+    const params = new URLSearchParams({ confirm: '1' });
+    if (external) params.set('allow_external', '1');
+    const response = await fetch(`/api/matches/${button.dataset.removeVideo}/remove-video?${params}`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível excluir o vídeo original.');
+      button.disabled = false;
+      button.textContent = 'Excluir vídeo original';
+      return;
+    }
+    location.reload();
+  });
+});
+
+if (librarySearch) {
+  const applySearch = () => {
+    const term = librarySearch.value.trim().toLowerCase();
+    let visible = 0;
+    document.querySelectorAll('[data-library-group]').forEach((group) => {
+      const matches = !term || (group.dataset.search || '').includes(term);
+      group.hidden = !matches;
+      if (matches) visible += group.querySelectorAll('[data-library-card]').length;
+    });
+    libraryCount.textContent = `${visible} clipe(s)`;
+    libraryEmpty.hidden = visible > 0;
+  };
+  librarySearch.addEventListener('input', applySearch);
+  applySearch();
+}
+
+document.addEventListener('keydown', (event) => {
+  if (libraryModal && !libraryModal.hidden && event.key === 'Escape') closeLibrary();
+});
+</script>
+{% endblock %}

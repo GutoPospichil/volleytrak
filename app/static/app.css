@@ -1517,3 +1517,136 @@ video {
   min-width: 0;
   word-break: break-all;
 }
+
+.badge.removed {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.video-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 26px 22px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #0b1218;
+}
+
+.video-missing strong {
+  font-size: 17px;
+}
+
+.video-missing p {
+  margin: 0;
+  max-width: 560px;
+}
+
+.library-head {
+  align-items: flex-start;
+}
+
+.library-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.library-summary span {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.library-summary strong {
+  color: var(--text);
+}
+
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.library-toolbar input {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.library-group .card-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.library-group .card-head h2 {
+  margin-bottom: 4px;
+}
+
+.library-group .actions {
+  justify-content: flex-end;
+}
+
+.library-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 2px;
+}
+
+.library-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 30px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.18);
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.clip-open:hover .library-play {
+  opacity: 1;
+}
+
+.clip-time.static {
+  cursor: default;
+}
+
+.clip-time.static:hover {
+  border-color: transparent;
+  color: var(--text);
+}
+
+.library-modal-box {
+  width: min(1100px, calc(100vw - 44px));
+}
+
+.library-modal-box video {
+  max-height: 70vh;
+}
+
+.library-modal-actions {
+  margin-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .library-head {
+    flex-direction: column;
+  }
+
+  .library-summary {
+    justify-content: flex-start;
+  }
+}
+

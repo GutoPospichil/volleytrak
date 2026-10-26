@@ -777,6 +777,26 @@ def list_clips(match_id: int, status: str | None = None) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def list_saved_clips() -> list[sqlite3.Row]:
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT
+                clips.*,
+                matches.title AS match_title,
+                matches.opponent AS match_opponent,
+                matches.played_on AS match_played_on,
+                matches.video_path AS match_video_path,
+                matches.source AS match_source,
+                matches.status AS match_status
+            FROM clips
+            JOIN matches ON matches.id = clips.match_id
+            WHERE clips.status = 'saved'
+            ORDER BY COALESCE(clips.saved_at, clips.created_at) DESC, clips.id DESC
+            """
+        ).fetchall()
+
+
 def get_clip(clip_id: int) -> sqlite3.Row | None:
     with db() as conn:
         return conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()

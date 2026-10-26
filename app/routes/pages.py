@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -29,6 +30,7 @@ from ..db import (
     list_events,
     list_matches,
     list_players,
+    list_saved_clips,
 )
 from ..serializers import event_dict, match_dict, player_dict
 from ..templating import templates
@@ -209,6 +211,95 @@ def learning_page(request: Request):
             "rejection_details": CLIP_REJECTION_DETAIL_LABELS,
             "edit_stats": clip_edit_stats(),
             "recent_edits": recent_edits,
+        },
+    )
+
+
+def _format_duration(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    minutes, sec = divmod(total, 60)
+    if minutes >= 60:
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}h {minutes:02d}min"
+    return f"{minutes}min {sec:02d}s"
+
+
+def _format_bytes(size: int) -> str:
+    if size >= 1024**3:
+        return f"{size / 1024**3:.2f} GB"
+    if size >= 1024**2:
+        return f"{size / 1024**2:.1f} MB"
+    if size >= 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size} B"
+
+
+def _clock(seconds: float) -> str:
+    total = max(0, int(seconds))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+@router.get("/clipes", response_class=HTMLResponse)
+def saved_clips_page(request: Request):
+    groups: list[dict] = []
+    by_match: dict[int, dict] = {}
+    total_bytes = 0
+    total_duration = 0.0
+    total_clips = 0
+
+    for row in list_saved_clips():
+        clip = dict(row)
+        path = Path(clip["path"])
+        available = path.is_file()
+        size = path.stat().st_size if available else 0
+        clip["available"] = available
+        clip["size_label"] = _format_bytes(size)
+        clip["duration_label"] = _format_duration(float(clip["duration"] or 0))
+        clip["start_label"] = _clock(float(clip["start"] or 0))
+        clip["end_label"] = _clock(float(clip["end"] or 0))
+
+        match_id = int(clip["match_id"])
+        group = by_match.get(match_id)
+        if group is None:
+            video_path = clip["match_video_path"] or ""
+            group = {
+                "id": match_id,
+                "title": clip["match_title"],
+                "opponent": clip["match_opponent"] or "",
+                "played_on": clip["match_played_on"] or "",
+                "video_path": video_path,
+                "video_available": bool(video_path) and Path(video_path).is_file(),
+                "source": clip["match_source"] or "upload",
+                "processing": clip["match_status"] == "processing",
+                "clips": [],
+                "saved_count": 0,
+                "total_bytes": 0,
+                "total_duration": 0.0,
+            }
+            by_match[match_id] = group
+            groups.append(group)
+
+        group["clips"].append(clip)
+        group["saved_count"] += 1
+        group["total_bytes"] += size
+        group["total_duration"] += float(clip["duration"] or 0)
+        total_bytes += size
+        total_duration += float(clip["duration"] or 0)
+        total_clips += 1
+
+    for group in groups:
+        group["size_label"] = _format_bytes(group["total_bytes"])
+        group["duration_label"] = _format_duration(group["total_duration"])
+
+    return templates.TemplateResponse(
+        request,
+        "saved_clips.html",
+        {
+            "groups": groups,
+            "total_clips": total_clips,
+            "total_matches": len(groups),
+            "total_duration_label": _format_duration(total_duration),
+            "total_size_label": _format_bytes(total_bytes),
         },
     )
 

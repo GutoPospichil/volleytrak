@@ -8,6 +8,9 @@
     <p class="muted">
       {{ match.opponent or "Sem adversário" }}{% if match.played_on %} · {{ match.played_on }}{% endif %}
       · <span class="badge {{ match.status }}">{{ status_labels.get(match.status, match.status) }}</span>
+      {% if not match.video_available %}
+      <span class="badge removed">Vídeo removido</span>
+      {% endif %}
       {% if match.whistle_mode == "without" %}
       <span class="badge auto">Sem apito</span>
       {% else %}
@@ -16,7 +19,20 @@
     </p>
   </div>
   <div class="actions">
+    {% if match.video_available %}
     <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Calibrar quadra</a>
+    <button
+      id="remove-video"
+      class="button ghost"
+      type="button"
+      title="Apagar o vídeo original do disco e manter os clipes salvos"
+      data-title="{{ match.title }}"
+      data-path="{{ match.video_path }}"
+      data-source="{{ match.source }}"
+      data-saved="{{ clips_saved|length }}"
+      {% if match.status == "processing" %}disabled{% endif %}
+    >Excluir vídeo</button>
+    {% endif %}
     <button id="delete-match" class="button ghost" data-title="{{ match.title }}">Excluir</button>
   </div>
 </div>
@@ -45,6 +61,7 @@
 <div class="grid two">
   <section class="card">
     <h2>Vídeo</h2>
+    {% if match.video_available %}
     <video id="player" controls preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
     <p class="muted small">Tempo atual: <span id="current-time">0.0</span>s</p>
     <div class="video-toolbar">
@@ -70,6 +87,16 @@
       <button id="create-manual-clip" class="button primary small" type="button" disabled>Criar clipe manual</button>
       <p id="manual-cut-msg" class="muted small">Clique num bloco ou vão do mapa de calor para posicionar o vídeo; um trecho de 15s já vem marcado e pode ser ajustado.</p>
     </div>
+    {% else %}
+    <div class="video-missing">
+      <strong>Vídeo original removido</strong>
+      <p class="muted small">Os clipes salvos continuam disponíveis. Você pode assistir, baixar ou abrir a pasta pela aba Clipes salvos.</p>
+      <div class="actions">
+        <a class="button secondary small" href="/clipes">Abrir Clipes salvos</a>
+        <a class="button ghost small" href="/matches/{{ match.id }}?tab=saved">Ver clipes desta partida</a>
+      </div>
+    </div>
+    {% endif %}
   </section>
 
   <section class="card">
@@ -80,7 +107,9 @@
     {% else %}
     <p class="warn small">Quadra não calibrada. Sem isso, posições não são convertidas para metros.</p>
     {% endif %}
+    {% if match.video_available %}
     <a class="button secondary" href="/matches/{{ match.id }}/calibrate">Abrir calibração</a>
+    {% endif %}
 
     <p class="muted small">Modo de áudio: <strong>{{ "Jogo sem apito" if match.whistle_mode == "without" else "Jogo com apito" }}</strong></p>
     {% if match.whistle_mode == "without" %}
@@ -120,7 +149,7 @@
 </div>
 
 
-{% macro clip_card(clip, saved=False) %}
+{% macro clip_card(clip, saved=False, seekable=True) %}
 <div
   class="clip-card"
   data-clip-id="{{ clip.id }}"
@@ -164,12 +193,16 @@
     {% set start_s = clip.start|int % 60 %}
     {% set end_m = clip.end|int // 60 %}
     {% set end_s = clip.end|int % 60 %}
+    {% if seekable %}
     <button
       class="clip-time"
       type="button"
       data-seek-original="{{ clip.start }}"
       title="Ir para o vídeo original em {{ '%d:%02d'|format(start_m, start_s) }}"
     >{{ '%d:%02d'|format(start_m, start_s) }} – {{ '%d:%02d'|format(end_m, end_s) }}</button>
+    {% else %}
+    <span class="clip-time static" title="Vídeo original removido">{{ '%d:%02d'|format(start_m, start_s) }} – {{ '%d:%02d'|format(end_m, end_s) }}</span>
+    {% endif %}
   </div>
   <div class="clip-actions">
     <button
@@ -179,7 +212,9 @@
       data-starred="{{ 1 if clip.starred else 0 }}"
       title="{{ 'Remover estrela' if clip.starred else ('Marcar excelente e salvar' if not saved else 'Marcar como excelente') }}"
     >{% if clip.starred %}&#9733;{% else %}&#9734;{% endif %}</button>
+    {% if seekable %}
     <button class="button secondary small" type="button" data-edit-clip title="Editar início/fim">✎</button>
+    {% endif %}
     {% if saved %}
     <span class="badge done small">Salvo</span>
     <button class="button secondary small" type="button" data-move-new>Voltar</button>
@@ -198,12 +233,15 @@
       <p class="muted small">Revise os não verificados: salve os rallies bons ou exclua o resto.</p>
     </div>
     <div class="actions">
+      {% if match.video_available %}
       <button id="process-clips" class="button primary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Processar clipes</button>
       <button id="generate-clips" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %}>Gerar novamente (aprendizados)</button>
       <button id="reprocess-no-whistle" class="button secondary small" type="button" {% if match.status == "processing" %}disabled{% endif %} title="Ignora o áudio/apito e refaz os clipes usando bola, contatos e atividade">Reprocessar sem apito</button>
+      {% endif %}
       <button id="fast-review" class="button secondary small" type="button" {% if not clips_new %}disabled{% endif %}>Revisão rápida</button>
     </div>
   </div>
+  {% if match.video_available %}
   <label class="check-line"><input type="checkbox" id="use-gaps" checked> Reavaliar minutos sem clipes no mapa de calor</label>
   <label class="check-line"><input type="checkbox" id="use-activity" checked> Ignorar quadra vazia/parada</label>
   <p class="muted small">Processar clipes roda o pipeline completo (bola, áudio/contatos e rallies). Gerar novamente usa as detecções atuais, o perfil aprendido e o ranker, preserva os salvos e recria trechos de "corte errado" com o pré/pós-roll ajustado.</p>
@@ -218,6 +256,9 @@
       <li>Minutos sem clipes são reavaliados quando a opção acima está marcada e aparecem como "Lacuna".</li>
     </ul>
   </details>
+  {% else %}
+  <p class="muted small">Vídeo original removido. Você ainda pode revisar, salvar e excluir os clipes existentes. Para gerar novos clipes, adicione o vídeo novamente.</p>
+  {% endif %}
   <div class="review-toolbar">
     <div class="choice-field">
       <span class="choice-label">Ordenar não verificados</span>
@@ -329,7 +370,7 @@
   <div id="clips-new" class="clip-panel" {% if active_tab != 'new' %}hidden{% endif %}>
     {% if clips_new %}
     <div class="clip-grid">
-      {% for clip in clips_new %}{{ clip_card(clip) }}{% endfor %}
+      {% for clip in clips_new %}{{ clip_card(clip, false, match.video_available) }}{% endfor %}
     </div>
     <p class="muted small">Clipes brutos, sem overlay. Clique para reproduzir; salve os rallies bons e exclua o resto.</p>
     {% else %}
@@ -352,7 +393,7 @@
     </div>
     {% if clips_saved %}
     <div class="clip-grid">
-      {% for clip in clips_saved %}{{ clip_card(clip, true) }}{% endfor %}
+      {% for clip in clips_saved %}{{ clip_card(clip, true, match.video_available) }}{% endfor %}
     </div>
     {% else %}
     <p class="empty">Nenhum clipe salvo ainda. Vá em <a href="?tab=new">Não verificados</a> e salve os rallies bons.</p>
@@ -367,8 +408,8 @@
       </div>
       <video id="clip-video" controls playsinline></video>
       <div class="actions">
-        <button id="seek-original" class="button secondary small" type="button">Ver no vídeo original</button>
-        <button id="edit-clip" class="button secondary small" type="button">Editar corte</button>
+        <button id="seek-original" class="button secondary small" type="button" {% if not match.video_available %}hidden{% endif %}>Ver no vídeo original</button>
+        <button id="edit-clip" class="button secondary small" type="button" {% if not match.video_available %}hidden{% endif %}>Editar corte</button>
         <button id="star-clip" class="button star small" type="button">&#9734; Destacar</button>
         <button id="save-clip" class="button primary small" type="button">Salvar clipe</button>
         <button id="move-clip-new" class="button secondary small" type="button" hidden>Voltar para não verificados</button>
@@ -494,7 +535,7 @@
       </div>
       <div class="edit-layout">
         <div class="edit-video-wrap">
-          <video id="edit-video" controls playsinline preload="metadata" src="/api/matches/{{ match.id }}/video"></video>
+          <video id="edit-video" controls playsinline preload="metadata"{% if match.video_available %} src="/api/matches/{{ match.id }}/video"{% endif %}></video>
         </div>
         <div class="edit-controls">
           <p id="edit-info" class="muted small"></p>
@@ -771,10 +812,43 @@ document.getElementById('process-btn')?.addEventListener('click', async (event) 
 
 document.getElementById('delete-match').addEventListener('click', async (event) => {
   const title = event.currentTarget.dataset.title;
-  if (!confirm(`Excluir a partida "${title}" e os arquivos gerados?`)) return;
+  if (!confirm(`Excluir a partida "${title}" e TODOS os arquivos, incluindo os clipes salvos?`)) return;
   await fetch(`/api/matches/${matchId}`, { method: 'DELETE' });
   location.href = '/';
 });
+
+const removeVideoButton = document.getElementById('remove-video');
+if (removeVideoButton) {
+  removeVideoButton.addEventListener('click', async () => {
+    const title = removeVideoButton.dataset.title;
+    const path = removeVideoButton.dataset.path;
+    const saved = removeVideoButton.dataset.saved;
+    const external = removeVideoButton.dataset.source !== 'upload';
+    const noClips = saved === '0'
+      ? '\n\nATENÇÃO: esta partida não tem clipes salvos.'
+      : '';
+    const extra = external
+      ? '\n\nATENÇÃO: este vídeo está fora da pasta do VolleyTrak. O arquivo original do seu PC também será apagado.'
+      : '';
+    const message = `Excluir o vídeo original de "${title}" do disco?\n\nArquivo: ${path}\nClipes salvos preservados: ${saved}${noClips}${extra}\n\nEssa ação não pode ser desfeita.`;
+    if (!confirm(message)) return;
+    removeVideoButton.disabled = true;
+    removeVideoButton.textContent = 'Excluindo...';
+    const params = new URLSearchParams({ confirm: '1' });
+    if (external) params.set('allow_external', '1');
+    const response = await fetch(`/api/matches/${matchId}/remove-video?${params}`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível excluir o vídeo original.');
+      removeVideoButton.disabled = false;
+      removeVideoButton.textContent = 'Excluir vídeo';
+      return;
+    }
+    location.reload();
+  });
+}
 
 const clipModal = document.getElementById('clip-modal');
 const clipVideo = document.getElementById('clip-video');

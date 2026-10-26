@@ -49,6 +49,28 @@ O VolleyTrak ignora o áudio e refaz os clipes usando bola, contatos e atividade
 - As exclusões anteriores continuam valendo.
 - Quando a partida está em modo sem apito, aparece o botão **Reprocessar com apito** para voltar ao modo original.
 
+## Clipes salvos
+
+A aba **Clipes salvos** mostra todos os clipes salvos de todas as partidas, agrupados por partida.
+
+- **Assistir** reproduz o clipe dentro do app;
+- **Abrir pasta** abre a pasta dos clipes daquela partida no Explorer;
+- **Baixar clipe** salva uma cópia do clipe;
+- **Remover dos salvos** devolve o clipe para os não verificados da partida;
+- a busca filtra por partida, adversário ou data.
+
+## Excluir o vídeo original e manter os clipes
+
+Na aba **Clipes salvos**, cada partida tem o botão **Excluir vídeo original**. O mesmo botão aparece na página da partida como **Excluir vídeo**.
+
+- o arquivo do vídeo original é apagado do disco;
+- os clipes salvos, miniaturas, highlight e feedback continuam;
+- os clipes não verificados também continuam e podem ser revisados ou salvos;
+- a partida fica marcada como **Vídeo removido**;
+- sem o vídeo, não é possível reprocessar nem editar cortes daquela partida.
+
+Se o vídeo for um arquivo local fora da pasta do VolleyTrak, o app avisa e pede uma confirmação extra antes de apagar o original.
+
 ## Onde salvar os clipes
 
 Abra **Configurações** no topo do app:
