@@ -418,7 +418,7 @@
       <p id="clip-edit-note" class="muted small" hidden></p>
       {{ speed_control() }}
       <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
-      <p class="muted small">Atalhos: S salvar · D excluir · E editar · ←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause · M mudo</p>
+      <p class="muted small">Atalhos: S salvar · D excluir · {% if match.video_available %}E editar · {% endif %}←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause · M mudo</p>
     </div>
   </div>
 
@@ -585,6 +585,7 @@
 {% block scripts %}
 <script>
 const matchId = {{ match.id }};
+const videoAvailable = {{ 'true' if match.video_available else 'false' }};
 const player = document.getElementById('player');
 const currentTime = document.getElementById('current-time');
 
@@ -1689,6 +1690,7 @@ document.addEventListener('keydown', (event) => {
     }
     const key = event.key.toLowerCase();
     if (key === 'e') {
+      if (!videoAvailable) return;
       event.preventDefault();
       if (currentClipCard) openEdit(currentClipCard);
     } else if (key === 's') {
