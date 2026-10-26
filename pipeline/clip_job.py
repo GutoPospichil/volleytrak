@@ -78,7 +78,8 @@ def main() -> int:
             activity_path = job_dir / "activity.json"
             rallies_path = job_dir / "rallies_audio.json"
 
-            if reuse and ball_path.is_file():
+            reused_ball = bool(reuse and ball_path.is_file())
+            if reused_ball:
                 log("reutilizando detecção de bola existente")
                 update_progress(
                     args.match_id, 30, "Reutilizando detecção de bola existente..."
@@ -98,7 +99,10 @@ def main() -> int:
                     log_file,
                 )
 
-            if reuse and contacts_path.is_file():
+            reused_contacts = bool(
+                reuse and reused_ball and contacts_path.is_file()
+            )
+            if reused_contacts:
                 log("reutilizando contatos existentes")
                 update_progress(
                     args.match_id, 55, "Reutilizando contatos existentes..."
@@ -121,7 +125,12 @@ def main() -> int:
                 )
 
             if whistle_mode == "with":
-                if reuse and rallies_path.is_file():
+                if (
+                    reuse
+                    and reused_ball
+                    and reused_contacts
+                    and rallies_path.is_file()
+                ):
                     log("reutilizando apitos e rallies existentes")
                     update_progress(
                         args.match_id, 78, "Reutilizando apitos e rallies existentes..."
