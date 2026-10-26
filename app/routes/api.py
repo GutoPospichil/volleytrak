@@ -15,7 +15,9 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
+from ..clip_paths import clip_dir_for_match, clip_folder_for_match
 from ..config import (
+    DATA_DIR,
     JOB_DIR,
     MAX_UPLOAD_BYTES,
     ROOT,
@@ -37,10 +39,12 @@ from ..db import (
     delete_event,
     delete_match,
     delete_player,
+    delete_setting,
     get_clip,
     get_event,
     get_match,
     get_player,
+    get_setting,
     learning_stats,
     list_clip_rejections,
     list_clips,
@@ -51,6 +55,7 @@ from ..db import (
     remove_learning_example,
     set_clip_starred,
     set_clip_status,
+    set_setting,
     update_clip_bounds,
     update_match,
     upsert_learning_example,
@@ -63,6 +68,7 @@ from ..schemas import (
     ClipStatusIn,
     LocalVideoIn,
     ManualClipIn,
+    SettingsIn,
     ManualEventIn,
     PlayerIn,
 )
@@ -377,7 +383,7 @@ def create_manual_clip(match_id: int, payload: ManualClipIn):
     end = round(float(payload.end), 2)
     duration = round(end - start, 2)
     job_dir = JOB_DIR / f"match-{match_id}"
-    clips_dir = job_dir / "clips"
+    clips_dir = clip_dir_for_match(match_id)
     clips_dir.mkdir(parents=True, exist_ok=True)
     token = uuid4().hex[:10]
     clip_path = clips_dir / f"manual-{token}.mp4"
@@ -494,7 +500,11 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
         reason = "other"
 
     job_dir = JOB_DIR / f"match-{match_id}"
-    clips_dir = job_dir / "clips"
+    clips_dir = (
+        Path(clip["path"]).parent
+        if clip["path"]
+        else clip_dir_for_match(match_id)
+    )
     clips_dir.mkdir(parents=True, exist_ok=True)
     token = uuid4().hex[:10]
     new_path = clips_dir / f"edited-{token}.mp4"
@@ -1108,6 +1118,79 @@ def train_learning():
         "global_profile": profile.get("trim", {}),
         "min_ball_pct": profile.get("min_ball_pct"),
     }
+
+
+def _open_folder(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        os.startfile(str(path))
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
+@router.get("/settings")
+def get_app_settings():
+    configured = get_setting("clip_output_dir", "") or ""
+    return {
+        "clip_output_dir": configured,
+        "configured": bool(configured),
+    }
+
+
+@router.post("/settings")
+def update_app_settings(payload: SettingsIn):
+    value = payload.clip_output_dir.strip()
+    if not value:
+        delete_setting("clip_output_dir")
+        return {"ok": True, "clip_output_dir": "", "configured": False}
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise HTTPException(
+            status_code=400, detail="Informe o caminho completo da pasta"
+        )
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        test_file = path / ".volleytrak-write-test"
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Não foi possível usar essa pasta: {exc}",
+        )
+    set_setting("clip_output_dir", str(path))
+    return {
+        "ok": True,
+        "clip_output_dir": str(path),
+        "configured": True,
+    }
+
+
+@router.post("/settings/open-folder")
+def open_clips_folder(match_id: int | None = None):
+    if match_id is not None:
+        _require_match(match_id)
+        path = clip_folder_for_match(match_id)
+    else:
+        configured = get_setting("clip_output_dir")
+        if configured:
+            path = Path(configured)
+        else:
+            matches = list_matches()
+            if matches:
+                path = clip_folder_for_match(int(matches[0]["id"]))
+            else:
+                path = DATA_DIR
+    try:
+        _open_folder(path)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Não foi possível abrir a pasta: {exc}",
+        )
+    return {"ok": True, "path": str(path)}
 
 
 @router.get("/players")

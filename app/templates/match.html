@@ -223,7 +223,13 @@
         <button class="choice" type="button" data-choice="score">Maior score</button>
       </div>
     </div>
-    <span class="muted small">Atalhos no player: S salvar · D excluir · ←/→ navegar · Espaço play/pause</span>
+    <span class="muted small">Atalhos no player: S salvar · D excluir · ←/→ 5s · Shift+←/→ clipe · Espaço play/pause · M mudo</span>
+  </div>
+
+  <div class="clips-folder-line">
+    <span class="muted small clips-folder-path">Pasta dos clipes: {{ clips_folder }}</span>
+    <button id="open-clips-folder" class="button ghost small" type="button">Abrir pasta</button>
+    <a class="button ghost small" href="/configuracoes">Configurar pasta</a>
   </div>
 
   {% if timeline %}
@@ -731,6 +737,19 @@ document.querySelectorAll('[data-seek]').forEach((button) => {
     player.play().catch(() => {});
   });
 });
+
+const openClipsFolderButton = document.getElementById('open-clips-folder');
+if (openClipsFolderButton) {
+  openClipsFolderButton.addEventListener('click', async () => {
+    const response = await fetch(`/api/settings/open-folder?match_id=${matchId}`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      alert(error.detail || 'Não foi possível abrir a pasta dos clipes.');
+    }
+  });
+}
 
 document.getElementById('process-btn')?.addEventListener('click', async (event) => {
   const button = event.currentTarget;

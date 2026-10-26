@@ -6,6 +6,7 @@ from collections import Counter
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from ..clip_paths import clip_folder_for_match
 from ..config import JOB_DIR
 from ..constants import (
     CALIBRATION_MODES,
@@ -19,6 +20,7 @@ from ..constants import (
 from ..db import (
     clip_edit_stats,
     get_match,
+    get_setting,
     learning_stats,
     list_recent_clip_edits,
     list_recent_learning_examples,
@@ -94,6 +96,7 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
     if duration <= 0 and all_clips:
         duration = max(float(clip["end"]) for clip in all_clips)
     timeline = build_timeline(all_clips, duration) if all_clips and duration > 0 else None
+    clips_folder = str(clip_folder_for_match(match_id))
     saved_scores = [
         float(clip["saved_score"])
         for clip in clips_saved
@@ -131,6 +134,7 @@ def match_detail(request: Request, match_id: int, tab: str = "new"):
             "clips_new": clips_new,
             "clips_saved": clips_saved,
             "timeline": timeline,
+            "clips_folder": clips_folder,
             "saved_average": saved_average,
             "active_tab": active_tab,
             "highlight_available": highlight_path.is_file(),
@@ -206,6 +210,16 @@ def learning_page(request: Request):
             "edit_stats": clip_edit_stats(),
             "recent_edits": recent_edits,
         },
+    )
+
+
+@router.get("/configuracoes", response_class=HTMLResponse)
+def settings_page(request: Request):
+    configured = get_setting("clip_output_dir", "") or ""
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {"clip_output_dir": configured},
     )
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from app.clip_paths import clip_dir_for_match
 from app.config import JOB_DIR
 from app.constants import CLIP_REJECTION_CANONICAL
 from app.db import (
@@ -907,7 +908,7 @@ def main() -> int:
         print("preview: nenhum clipe foi gerado")
         return 0
 
-    clips_dir = JOB_DIR / f"match-{args.match_id}" / "clips"
+    clips_dir = clip_dir_for_match(args.match_id)
     clips_dir.mkdir(parents=True, exist_ok=True)
     for old in clear_unreviewed_clips(args.match_id):
         Path(old["path"]).unlink(missing_ok=True)

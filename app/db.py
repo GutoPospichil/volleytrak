@@ -129,6 +129,12 @@ CREATE TABLE IF NOT EXISTS clip_edits (
 
 CREATE INDEX IF NOT EXISTS idx_clip_edits_match
     ON clip_edits(match_id, created_at);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 MATCH_FIELDS = {
@@ -846,3 +852,30 @@ def list_clip_rejections(match_id: int) -> list[sqlite3.Row]:
             "SELECT * FROM clip_rejections WHERE match_id = ? ORDER BY start",
             (match_id,),
         ).fetchall()
+
+
+def get_setting(key: str, default: str | None = None) -> str | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+            """,
+            (key, value),
+        )
+
+
+def delete_setting(key: str) -> None:
+    with db() as conn:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))

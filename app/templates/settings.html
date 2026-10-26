@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Configurações · VolleyTrak{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Configurações</h1>
+    <p class="muted">Escolha onde os próximos clipes serão salvos e abra a pasta direto do app.</p>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Pasta dos clipes</h2>
+    <p class="muted small">
+      Os novos clipes vão para uma subpasta por partida:
+      <code>pasta escolhida\match-ID</code>. Clipes já existentes não são movidos.
+    </p>
+    <label>Salvar novos clipes em
+      <div class="path-row">
+        <input id="clip-folder" value="{{ clip_output_dir }}" placeholder="Ex.: D:\Clipes Vôlei">
+        <button id="choose-folder" class="button secondary" type="button">Escolher pasta</button>
+      </div>
+    </label>
+    <div class="actions">
+      <button id="save-settings" class="button primary" type="button">Salvar configuração</button>
+      <button id="open-folder" class="button secondary" type="button">Abrir pasta</button>
+      <button id="reset-folder" class="button ghost" type="button">Usar padrão</button>
+    </div>
+    <p id="settings-status" class="muted small"></p>
+  </section>
+
+  <section class="card">
+    <h2>Como funciona</h2>
+    <ul class="muted small">
+      <li>A pasta escolhida vale para novos clipes gerados, cortes manuais e edições de clipes novos.</li>
+      <li>Ao editar um clipe antigo, o arquivo novo fica na mesma pasta do original.</li>
+      <li><strong>Abrir pasta</strong> abre o Explorer no Windows.</li>
+      <li>No app desktop, <strong>Escolher pasta</strong> abre o seletor nativo de pastas.</li>
+      <li>No navegador, digite o caminho completo (por exemplo, <code>D:\Clipes Vôlei</code>).</li>
+      <li>Sem configuração, o app continua usando a pasta de dados interna do VolleyTrak.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const folderInput = document.getElementById('clip-folder');
+const settingsStatus = document.getElementById('settings-status');
+
+async function saveFolder(value) {
+  settingsStatus.textContent = 'Salvando...';
+  const response = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clip_output_dir: value })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    settingsStatus.textContent = data.detail || 'Não foi possível salvar a configuração.';
+    return;
+  }
+  folderInput.value = data.clip_output_dir || '';
+  settingsStatus.textContent = data.clip_output_dir
+    ? `Pasta configurada: ${data.clip_output_dir}`
+    : 'Usando a pasta padrão do VolleyTrak (por partida).';
+}
+
+document.getElementById('save-settings').addEventListener('click', () => {
+  saveFolder(folderInput.value.trim());
+});
+
+document.getElementById('choose-folder').addEventListener('click', async () => {
+  if (window.pywebview?.api?.choose_folder) {
+    const path = await window.pywebview.api.choose_folder();
+    if (path) {
+      folderInput.value = path;
+      settingsStatus.textContent = 'Pasta selecionada. Clique em Salvar configuração.';
+    }
+    return;
+  }
+  folderInput.focus();
+  settingsStatus.textContent = 'No navegador, digite o caminho completo da pasta. No app desktop, o seletor nativo abre aqui.';
+});
+
+document.getElementById('reset-folder').addEventListener('click', () => {
+  saveFolder('');
+});
+
+document.getElementById('open-folder').addEventListener('click', async () => {
+  settingsStatus.textContent = 'Abrindo pasta...';
+  const response = await fetch('/api/settings/open-folder', { method: 'POST' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    settingsStatus.textContent = data.detail || 'Não foi possível abrir a pasta.';
+    return;
+  }
+  settingsStatus.textContent = `Pasta aberta: ${data.path}`;
+});
+</script>
+{% endblock %}

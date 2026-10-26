@@ -83,6 +83,24 @@ def wait_for_server(port: int, timeout: float = 40.0) -> bool:
     return False
 
 
+class DesktopApi:
+    def choose_folder(self) -> str:
+        try:
+            import webview
+
+            if not webview.windows:
+                return ""
+            result = webview.windows[0].create_file_dialog(webview.FileDialog.FOLDER)
+            if not result:
+                return ""
+            if isinstance(result, (list, tuple)):
+                return str(result[0])
+            return str(result)
+        except Exception as exc:
+            print(f"erro ao escolher pasta: {exc}", flush=True)
+            return ""
+
+
 def show_error(message: str) -> None:
     try:
         ctypes.windll.user32.MessageBoxW(0, message, "VolleyTrak", 0x10)
@@ -182,6 +200,7 @@ def main() -> int:
         min_size=(1080, 700),
         background_color="#0b0f14",
         confirm_close=False,
+        js_api=DesktopApi(),
     )
     try:
         webview.start(

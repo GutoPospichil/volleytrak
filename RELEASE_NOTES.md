@@ -1,16 +1,22 @@
-# VolleyTrak 0.3.15 beta
+# VolleyTrak 0.3.16 beta
 
-## Botão de mudo
-- Novo botão **Som/Mudo** no topo do app.
-- Muta o vídeo original, os clipes e o vídeo da edição de corte de uma vez.
-- O estado é salvo: continua mudo ou com som nas próximas telas.
-- Atalho **M** para alternar o mudo (fora de campos de texto).
-- O botão mostra o ícone e o texto **Som** ou **Mudo**.
+## Onde salvar os clipes
+- Nova página **Configurações** no topo do app.
+- Escolha a pasta base dos clipes com **Escolher pasta** (seletor nativo no app desktop) ou digitando o caminho.
+- Novos clipes vão para `<pasta escolhida>\match-<id>`.
+- Clipes existentes não são movidos.
+- Ao editar um clipe antigo, o novo arquivo fica na mesma pasta do original.
+- Sem configuração, continua usando a pasta interna de dados do VolleyTrak.
 
-## Base da 0.3.14
-- Correção da abertura do app desktop com `pythonw` (log em `data/desktop.log` e mensagem de erro).
-- Velocidade de 0.5x a 2x e setas de 5s.
+## Abrir pasta direto do app
+- Botão **Abrir pasta** nas Configurações.
+- Botão **Abrir pasta** na página da partida, abrindo a pasta daquela partida.
+- Link **Configurar pasta** na própria partida.
+- No Windows, abre o Explorer na pasta correta.
+
+## Base da 0.3.15
+- Botão global **Som/Mudo** (vídeo original, clipes e edição), com atalho **M**.
+- Velocidade 0.5x–2x e setas de 5s.
 - Instalador único e portátil único.
-- Arrastar e soltar, opções clicáveis, filtro de quadra vazia.
 
 Baixe `VolleyTrakSetup.exe` e execute.

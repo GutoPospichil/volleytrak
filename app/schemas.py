@@ -142,6 +142,10 @@ class ClipStatusIn(BaseModel):
         return status
 
 
+class SettingsIn(BaseModel):
+    clip_output_dir: str = Field(default="", max_length=500)
+
+
 class PlayerIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     number: int | None = Field(default=None, ge=0, le=99)

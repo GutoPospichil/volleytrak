@@ -313,3 +313,17 @@ Atalhos:
 - **S** salvar, **D** excluir, **E** editar o corte.
 
 Quando o foco está em um campo numérico, as setas ajustam o valor do campo em vez de mover o vídeo.
+
+## Onde salvar os clipes
+
+Abra **Configurações** no topo do app:
+
+- escolha a pasta base com **Escolher pasta** (seletor nativo no app desktop) ou digite o caminho completo;
+- clique em **Salvar configuração**;
+- novos clipes vão para `<pasta escolhida>\match-<id>`;
+- clipes já existentes não são movidos;
+- ao editar um clipe antigo, o arquivo novo fica na pasta do original;
+- **Abrir pasta** abre o Explorer na pasta configurada;
+- a página da partida também tem **Abrir pasta** e **Configurar pasta**.
+
+Sem configuração, o app continua usando a pasta interna de dados do VolleyTrak.
