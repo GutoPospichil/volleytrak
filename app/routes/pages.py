@@ -273,6 +273,8 @@ def saved_clips_page(request: Request):
                 "processing": clip["match_status"] == "processing",
                 "clips": [],
                 "saved_count": 0,
+                "rally_count": 0,
+                "serve_count": 0,
                 "total_bytes": 0,
                 "total_duration": 0.0,
             }
@@ -281,6 +283,10 @@ def saved_clips_page(request: Request):
 
         group["clips"].append(clip)
         group["saved_count"] += 1
+        if (clip.get("point_type") or "rally") == "serve":
+            group["serve_count"] += 1
+        else:
+            group["rally_count"] += 1
         group["total_bytes"] += size
         group["total_duration"] += float(clip["duration"] or 0)
         total_bytes += size

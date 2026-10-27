@@ -59,6 +59,19 @@ A aba **Clipes salvos** mostra todos os clipes salvos de todas as partidas, agru
 - **Remover dos salvos** devolve o clipe para os não verificados da partida;
 - a busca filtra por partida, adversário ou data.
 
+## Salvar rally ou ace/erro de saque
+
+Ao revisar um clipe novo, agora existem duas formas de salvar:
+
+- **Salvar rally**: ponto com troca de bola. Peso 1.0 no aprendizado; 2.0 com estrela.
+- **Ace/erro**: ace ou erro de saque. Peso 0.7; 1.4 com estrela.
+
+Os dois continuam na aba **Clipes salvos**, com etiqueta **Rally** ou **Ace/erro de saque** e filtro próprio.
+
+Se você não quiser guardar um ace, use o motivo **Ponto de saque (ace/erro)**. Ele pesa pouco (0.3) para o ranker não aprender que clipes curtos são ruins.
+
+Quando o corte estiver errado, o fluxo recomendado continua sendo **Editar corte**: o ajuste ensina o pré/pós-roll e não descarta o conteúdo.
+
 ## Excluir o vídeo original e manter os clipes
 
 Na aba **Clipes salvos**, cada partida tem o botão **Excluir vídeo original**. O mesmo botão aparece na página da partida como **Excluir vídeo**.

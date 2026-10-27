@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from .config import DB_PATH, ensure_dirs
-from .constants import learning_example_weight
+from .constants import POINT_TYPES, learning_example_weight
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS matches (
@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS clips (
     score REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'new',
     source TEXT NOT NULL DEFAULT 'speed',
+    point_type TEXT NOT NULL DEFAULT 'rally',
     features TEXT,
     saved_score REAL,
     starred INTEGER NOT NULL DEFAULT 0,
@@ -187,6 +188,10 @@ def init_db() -> None:
         if "source" not in columns:
             conn.execute(
                 "ALTER TABLE clips ADD COLUMN source TEXT NOT NULL DEFAULT 'speed'"
+            )
+        if "point_type" not in columns:
+            conn.execute(
+                "ALTER TABLE clips ADD COLUMN point_type TEXT NOT NULL DEFAULT 'rally'"
             )
         if "features" not in columns:
             conn.execute("ALTER TABLE clips ADD COLUMN features TEXT")
@@ -371,7 +376,9 @@ def backfill_learning_examples() -> int:
                 source=clip["source"] or "",
                 features=features,
                 weight=learning_example_weight(
-                    "good", starred=bool(clip["starred"])
+                    "good",
+                    starred=bool(clip["starred"]),
+                    point_type=clip["point_type"] or "rally",
                 ),
             )
             total += 1
@@ -735,18 +742,22 @@ def add_clip(
     score: float = 0.0,
     status: str = "new",
     source: str = "speed",
+    point_type: str = "rally",
     features: dict[str, Any] | None = None,
 ) -> int:
     if status not in {"new", "saved"}:
         raise ValueError("status de clipe inválido")
+    if point_type not in POINT_TYPES:
+        raise ValueError("tipo de ponto inválido")
     payload = json.dumps(features, ensure_ascii=False) if features is not None else None
     with db() as conn:
         cur = conn.execute(
             """
             INSERT INTO clips
-                (match_id, start, end, duration, path, thumb, score, source, features, status, saved_at)
+                (match_id, start, end, duration, path, thumb, score, source,
+                 point_type, features, status, saved_at)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'saved' THEN datetime('now') ELSE NULL END)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'saved' THEN datetime('now') ELSE NULL END)
             """,
             (
                 match_id,
@@ -757,6 +768,7 @@ def add_clip(
                 thumb,
                 score,
                 source,
+                point_type,
                 payload,
                 status,
                 status,
@@ -825,18 +837,25 @@ def update_clip_features(clip_id: int, features: dict[str, Any]) -> None:
         )
 
 
-def set_clip_status(clip_id: int, status: str) -> None:
+def set_clip_status(
+    clip_id: int,
+    status: str,
+    point_type: str | None = None,
+) -> None:
     if status not in {"new", "saved"}:
         raise ValueError("status de clipe inválido")
+    if point_type is not None and point_type not in POINT_TYPES:
+        raise ValueError("tipo de ponto inválido")
     with db() as conn:
         conn.execute(
             """
             UPDATE clips
             SET status = ?,
+                point_type = COALESCE(?, point_type),
                 saved_at = CASE WHEN ? = 'saved' THEN datetime('now') ELSE NULL END
             WHERE id = ?
             """,
-            (status, status, clip_id),
+            (status, point_type, status, clip_id),
         )
 
 

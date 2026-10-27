@@ -78,7 +78,8 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 )
         else:
             saved = conn.execute(
-                "SELECT features, duration, source, starred FROM clips WHERE status = 'saved'"
+                "SELECT features, duration, source, starred, point_type "
+                "FROM clips WHERE status = 'saved'"
             ).fetchall()
             rejected = conn.execute(
                 "SELECT features, end - start AS duration, '' AS source, reason "
@@ -94,7 +95,11 @@ def load_training_data() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                             payload, float(row["duration"]), row["source"] or ""
                         ),
                         1,
-                        2.0 if row["starred"] else 1.0,
+                        learning_example_weight(
+                            "good",
+                            starred=bool(row["starred"]),
+                            point_type=row["point_type"] or "rally",
+                        ),
                     )
                 )
             for row in rejected:

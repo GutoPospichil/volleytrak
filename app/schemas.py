@@ -133,6 +133,7 @@ class ClipStarIn(BaseModel):
 
 class ClipStatusIn(BaseModel):
     status: str
+    point_type: str | None = None
 
     @field_validator("status")
     @classmethod
@@ -140,6 +141,13 @@ class ClipStatusIn(BaseModel):
         if status not in {"new", "saved"}:
             raise ValueError("status deve ser new ou saved")
         return status
+
+    @field_validator("point_type")
+    @classmethod
+    def validate_point_type(cls, point_type: str | None) -> str | None:
+        if point_type is not None and point_type not in {"rally", "serve"}:
+            raise ValueError("point_type deve ser rally ou serve")
+        return point_type
 
 
 class SettingsIn(BaseModel):

@@ -26,6 +26,7 @@ CLIP_REJECTION_LABELS = {
     "dead_time": "Tempo morto / bola no chão",
     "not_rally": "Fora de rally (aquecimento/treino)",
     "bad_cut": "Corte errado / rally pela metade",
+    "serve_point": "Ponto de saque (ace/erro)",
     "duplicate": "Duplicado",
     "other": "Outro",
 }
@@ -33,6 +34,8 @@ CLIP_REJECTION_LABELS = {
 CLIP_REJECTION_CANONICAL = {
     "ball_on_floor": "dead_time",
     "half_rally": "bad_cut",
+    "ace": "serve_point",
+    "serve_error": "serve_point",
 }
 
 CLIP_REJECTION_DETAIL_LABELS = {
@@ -40,6 +43,13 @@ CLIP_REJECTION_DETAIL_LABELS = {
     "end_early": "Clipe acaba antes do ponto",
     "both": "As duas coisas",
 }
+
+POINT_TYPE_LABELS = {
+    "rally": "Rally",
+    "serve": "Ace/erro de saque",
+}
+
+POINT_TYPES = {"rally", "serve"}
 
 CALIBRATION_MODES = {
     "full": {
@@ -89,15 +99,24 @@ CALIBRATION_MODES = {
 }
 
 
-def learning_example_weight(label: str, reason: str = "", starred: bool = False) -> float:
+def learning_example_weight(
+    label: str,
+    reason: str = "",
+    starred: bool = False,
+    point_type: str = "rally",
+) -> float:
     if label == "good":
-        return 2.0 if starred else 1.0
+        base = 0.7 if point_type == "serve" else 1.0
+        return round(base * (2.0 if starred else 1.0), 2)
     canonical = CLIP_REJECTION_CANONICAL.get(reason or "", reason or "")
     if canonical == "duplicate":
         # Duplicado é redundância, não conteúdo ruim: não deve ensinar o ranker.
         return 0.0
     if canonical == "bad_cut":
         return 0.8
+    if canonical == "serve_point":
+        # Ace/erro de saque é ponto válido; se foi descartado, ensina pouco.
+        return 0.3
     if canonical in {"dead_time", "not_rally"}:
         return 1.2
     return 1.0

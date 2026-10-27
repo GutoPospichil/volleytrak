@@ -646,6 +646,8 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
 
     status = "saved" if payload.save or clip["status"] == "saved" else "new"
     saved_score = float(edited_quality) if status == "saved" else None
+    point_type = clip["point_type"] or "rally"
+    edited_features["point_type"] = point_type
     old_path = Path(clip["path"])
     old_thumb = Path(clip["thumb"]) if clip["thumb"] else None
 
@@ -685,7 +687,7 @@ def edit_clip(match_id: int, clip_id: int, payload: ClipEditIn):
         note="edição manual",
         source=clip["source"] or "edit",
         features=edited_features,
-        weight=1.5,
+        weight=1.5 if point_type == "rally" else 1.0,
     )
     build_profile_for_match(match_id)
     _invalidate_highlight(match_id)
@@ -731,13 +733,21 @@ def update_clip_status(clip_id: int, payload: ClipStatusIn):
     clip = get_clip(clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="Clipe não encontrado")
-    set_clip_status(clip_id, payload.status)
+    point_type = payload.point_type or clip["point_type"] or "rally"
     if payload.status == "saved":
-        _record_learning_example(clip, "good")
+        set_clip_status(clip_id, "saved", point_type)
+        updated = get_clip(clip_id) or clip
+        _record_learning_example(updated, "good", point_type=point_type)
     else:
+        set_clip_status(clip_id, "new")
         remove_learning_example(clip["match_id"], clip["start"], clip["end"])
     _invalidate_highlight(clip["match_id"])
-    return {"ok": True, "id": clip_id, "status": payload.status}
+    return {
+        "ok": True,
+        "id": clip_id,
+        "status": payload.status,
+        "point_type": point_type,
+    }
 
 def _clip_features(clip) -> dict:
     features = {}
@@ -753,6 +763,7 @@ def _clip_features(clip) -> dict:
             "saved_score": clip["saved_score"],
             "starred": bool(clip["starred"]),
             "duration": clip["duration"],
+            "point_type": clip["point_type"] or "rally",
         }
     )
     return features
@@ -765,10 +776,14 @@ def _record_learning_example(
     detail: str = "",
     note: str = "",
     weight: float | None = None,
+    point_type: str | None = None,
 ) -> None:
     if weight is None:
         weight = learning_example_weight(
-            label, reason, bool(clip["starred"])
+            label,
+            reason,
+            bool(clip["starred"]),
+            point_type or clip["point_type"] or "rally",
         )
     upsert_learning_example(
         clip["match_id"],
@@ -808,14 +823,21 @@ def star_clip(clip_id: int, payload: ClipStarIn):
     clip = get_clip(clip_id)
     if clip is None:
         raise HTTPException(status_code=404, detail="Clipe não encontrado")
+    point_type = clip["point_type"] or "rally"
     set_clip_starred(clip_id, payload.starred)
     if payload.starred and clip["status"] == "new":
         set_clip_status(clip_id, "saved")
     if clip["status"] == "saved" or payload.starred:
+        updated = get_clip(clip_id) or clip
         _record_learning_example(
-            clip,
+            updated,
             "good",
-            weight=2.0 if payload.starred else 1.0,
+            weight=learning_example_weight(
+                "good",
+                starred=payload.starred,
+                point_type=point_type,
+            ),
+            point_type=point_type,
         )
     _invalidate_highlight(clip["match_id"])
     if payload.starred or clip["status"] == "saved":

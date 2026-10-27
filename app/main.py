@@ -17,7 +17,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="VolleyTrak", version="0.3.19", lifespan=lifespan)
+app = FastAPI(title="VolleyTrak", version="0.3.20", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(api.router, prefix="/api")
 app.include_router(pages.router)

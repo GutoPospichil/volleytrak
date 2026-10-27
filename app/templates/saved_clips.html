@@ -18,6 +18,11 @@
 {% if groups %}
 <section class="card library-toolbar">
   <input id="library-search" type="search" placeholder="Buscar por partida, adversário ou data...">
+  <div class="library-type-filter">
+    <button class="choice active" type="button" data-library-type="all">Todos</button>
+    <button class="choice" type="button" data-library-type="rally">Rallies</button>
+    <button class="choice" type="button" data-library-type="serve">Aces/erros</button>
+  </div>
   <span id="library-count" class="muted small">{{ total_clips }} clipe(s)</span>
 </section>
 
@@ -28,7 +33,7 @@
       <h2>{{ group.title }}</h2>
       <p class="muted small">
         {{ group.opponent or "Sem adversário" }}{% if group.played_on %} · {{ group.played_on }}{% endif %}
-        · {{ group.saved_count }} clipe(s) · {{ group.duration_label }} · {{ group.size_label }}
+        · {{ group.saved_count }} clipe(s) · {{ group.rally_count }} rally(s) · {{ group.serve_count }} ace(s)/erro(s) · {{ group.duration_label }} · {{ group.size_label }}
         {% if not group.video_available %}<span class="badge removed">Vídeo removido</span>{% endif %}
       </p>
     </div>
@@ -56,9 +61,11 @@
       data-library-card
       data-clip-id="{{ clip.id }}"
       data-match-id="{{ group.id }}"
+      data-point-type="{{ clip.point_type or 'rally' }}"
       data-src="/api/matches/{{ group.id }}/clips/{{ clip.id }}"
       data-title="{{ group.title }}"
       data-time="{{ clip.start_label }}–{{ clip.end_label }}"
+      data-kind-label="{{ 'Ace/erro de saque' if clip.point_type == 'serve' else 'Rally' }}"
       data-available="{{ 1 if clip.available else 0 }}"
     >
       <div class="clip-media">
@@ -77,6 +84,7 @@
       <div class="library-card-body">
         <strong>{{ clip.start_label }} – {{ clip.end_label }}</strong>
         <span class="muted small">{{ clip.duration_label }} · {{ clip.size_label }}</span>
+        <span class="point-type-badge {{ 'serve' if clip.point_type == 'serve' else 'rally' }}">{{ 'Ace/erro de saque' if clip.point_type == 'serve' else 'Rally' }}</span>
       </div>
       <div class="clip-actions">
         <button class="button secondary small" type="button" data-play-clip {% if not clip.available %}disabled{% endif %}>Assistir</button>
@@ -149,7 +157,7 @@ function openLibrary(card) {
   const rate = parseFloat(localStorage.getItem('vt-playback-rate') || '1') || 1;
   libraryVideo.playbackRate = rate;
   libraryModalTitle.textContent = card.dataset.title;
-  libraryModalMeta.textContent = card.dataset.time;
+  libraryModalMeta.textContent = `${card.dataset.kindLabel || 'Rally'} · ${card.dataset.time}`;
   libraryOpenMatch.href = `/matches/${card.dataset.matchId}?tab=saved`;
   libraryDownload.href = card.dataset.src;
   libraryDownload.setAttribute('download', `clipe-${card.dataset.clipId}.mp4`);
@@ -249,20 +257,41 @@ document.querySelectorAll('[data-remove-video]').forEach((button) => {
   });
 });
 
-if (librarySearch) {
-  const applySearch = () => {
-    const term = librarySearch.value.trim().toLowerCase();
-    let visible = 0;
-    document.querySelectorAll('[data-library-group]').forEach((group) => {
-      const matches = !term || (group.dataset.search || '').includes(term);
-      group.hidden = !matches;
-      if (matches) visible += group.querySelectorAll('[data-library-card]').length;
+let libraryType = 'all';
+const libraryTypeButtons = [...document.querySelectorAll('[data-library-type]')];
+
+function applyLibraryFilters() {
+  if (!librarySearch) return;
+  const term = librarySearch.value.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('[data-library-group]').forEach((group) => {
+    const groupMatches = !term || (group.dataset.search || '').includes(term);
+    let groupVisible = 0;
+    group.querySelectorAll('[data-library-card]').forEach((card) => {
+      const typeMatches = libraryType === 'all'
+        || (card.dataset.pointType || 'rally') === libraryType;
+      const show = groupMatches && typeMatches;
+      card.hidden = !show;
+      if (show) groupVisible += 1;
     });
-    libraryCount.textContent = `${visible} clipe(s)`;
-    libraryEmpty.hidden = visible > 0;
-  };
-  librarySearch.addEventListener('input', applySearch);
-  applySearch();
+    group.hidden = groupVisible === 0;
+    visible += groupVisible;
+  });
+  libraryCount.textContent = `${visible} clipe(s)`;
+  libraryEmpty.hidden = visible > 0;
+}
+
+libraryTypeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    libraryType = button.dataset.libraryType || 'all';
+    libraryTypeButtons.forEach((item) => item.classList.toggle('active', item === button));
+    applyLibraryFilters();
+  });
+});
+
+if (librarySearch) {
+  librarySearch.addEventListener('input', applyLibraryFilters);
+  applyLibraryFilters();
 }
 
 document.addEventListener('keydown', (event) => {

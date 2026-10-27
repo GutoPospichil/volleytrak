@@ -154,6 +154,7 @@
   class="clip-card"
   data-clip-id="{{ clip.id }}"
   data-clip-status="{{ 'saved' if saved else 'new' }}"
+  data-clip-point-type="{{ clip.point_type or 'rally' }}"
   data-clip-starred="{{ 1 if clip.starred else 0 }}"
   data-clip-start="{{ clip.start }}"
   data-clip-end="{{ clip.end }}"
@@ -216,10 +217,11 @@
     <button class="button secondary small" type="button" data-edit-clip title="Editar início/fim">✎</button>
     {% endif %}
     {% if saved %}
-    <span class="badge done small">Salvo</span>
+    <span class="badge done small {{ 'serve-kind' if clip.point_type == 'serve' else '' }}">Salvo · {{ 'Ace/erro' if clip.point_type == 'serve' else 'Rally' }}</span>
     <button class="button secondary small" type="button" data-move-new>Voltar</button>
     {% else %}
-    <button class="button primary small" type="button" data-save-clip>Salvar</button>
+    <button class="button primary small" type="button" data-save-clip>Salvar rally</button>
+    <button class="button secondary small" type="button" data-save-serve-clip title="Salvar como ace ou erro de saque">Ace/erro</button>
     {% endif %}
     <button class="button ghost small" type="button" data-delete-clip>Excluir</button>
   </div>
@@ -269,7 +271,7 @@
         <button class="choice" type="button" data-choice="score">Maior score</button>
       </div>
     </div>
-    <span class="muted small">Atalhos no player: S salvar · D excluir · ←/→ 5s · Shift+←/→ clipe · Espaço play/pause · M mudo</span>
+    <span class="muted small">Atalhos no player: S salvar rally · A ace/erro · D excluir · ←/→ 5s · Shift+←/→ clipe · Espaço play/pause · M mudo</span>
   </div>
 
   <div class="clips-folder-line">
@@ -386,7 +388,8 @@
       <button id="score-saved" class="button secondary small" type="button" {% if not clips_saved %}disabled{% endif %}>
         Calcular notas
       </button>
-      <span id="saved-summary" class="muted small">{{ clips_saved|length }} clipe(s) salvo(s){% if saved_average is not none %} · nota média {{ saved_average }}{% endif %}.</span>
+      {% set serve_saved = clips_saved|selectattr('point_type', 'equalto', 'serve')|list|length %}
+      <span id="saved-summary" class="muted small">{{ clips_saved|length }} salvo(s) · {{ clips_saved|length - serve_saved }} rally(s) · {{ serve_saved }} ace(s)/erro(s){% if saved_average is not none %} · nota média {{ saved_average }}{% endif %}.</span>
       {% if highlight_available %}
       <a class="button ghost small" href="/api/matches/{{ match.id }}/highlight" download>Baixar último highlight</a>
       {% endif %}
@@ -411,14 +414,15 @@
         <button id="seek-original" class="button secondary small" type="button" {% if not match.video_available %}hidden{% endif %}>Ver no vídeo original</button>
         <button id="edit-clip" class="button secondary small" type="button" {% if not match.video_available %}hidden{% endif %}>Editar corte</button>
         <button id="star-clip" class="button star small" type="button">&#9734; Destacar</button>
-        <button id="save-clip" class="button primary small" type="button">Salvar clipe</button>
+        <button id="save-clip" class="button primary small" type="button">Salvar rally</button>
+        <button id="save-clip-serve" class="button secondary small" type="button" title="Salvar como ace ou erro de saque">Salvar ace/erro</button>
         <button id="move-clip-new" class="button secondary small" type="button" hidden>Voltar para não verificados</button>
         <button id="delete-clip" class="button ghost small" type="button">Excluir clipe</button>
       </div>
       <p id="clip-edit-note" class="muted small" hidden></p>
       {{ speed_control() }}
       <label class="check-line"><input type="checkbox" id="auto-advance" checked> Avançar após salvar/excluir</label>
-      <p class="muted small">Atalhos: S salvar · D excluir · {% if match.video_available %}E editar · {% endif %}←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause · M mudo</p>
+      <p class="muted small">Atalhos: S salvar rally · A salvar ace/erro · D excluir · {% if match.video_available %}E editar · {% endif %}←/→ volta/avança 5s · Shift+←/→ clipe anterior/próximo · Espaço play/pause · M mudo</p>
     </div>
   </div>
 
@@ -855,6 +859,7 @@ const clipModal = document.getElementById('clip-modal');
 const clipVideo = document.getElementById('clip-video');
 const clipModalStatus = document.getElementById('clip-modal-status');
 const saveClipButton = document.getElementById('save-clip');
+const saveServeClipButton = document.getElementById('save-clip-serve');
 const moveClipNewButton = document.getElementById('move-clip-new');
 const starClipButton = document.getElementById('star-clip');
 const seekOriginalButton = document.getElementById('seek-original');
@@ -876,6 +881,7 @@ const clipEditNote = document.getElementById('clip-edit-note');
 let currentClipId = null;
 let currentClipStatus = null;
 let currentClipStarred = false;
+let currentClipPointType = 'rally';
 let currentClipStart = null;
 let currentClipCard = null;
 let editCard = null;
@@ -973,12 +979,19 @@ function updateEmptyState(panel, message) {
 function updateCounts() {
   const newCount = clipCount(newPanel);
   const savedCount = clipCount(savedPanel);
+  const savedCards = savedPanel ? [...savedPanel.querySelectorAll('.clip-card')] : [];
+  const serveCount = savedCards.filter((card) => card.dataset.clipPointType === 'serve').length;
+  const rallyCount = savedCount - serveCount;
   const newTab = document.querySelector('.clip-tab[data-tab="new"] .tab-count');
   const savedTab = document.querySelector('.clip-tab[data-tab="saved"] .tab-count');
   if (newTab) newTab.textContent = newCount;
   if (savedTab) savedTab.textContent = savedCount;
   const summary = document.getElementById('saved-summary');
-  if (summary) summary.textContent = `${savedCount} clipe(s) salvo(s).`;
+  if (summary) {
+    summary.textContent = savedCount
+      ? `${savedCount} salvo(s) · ${rallyCount} rally(s) · ${serveCount} ace(s)/erro(s).`
+      : 'Nenhum clipe salvo.';
+  }
   const exportHighlight = document.getElementById('export-highlight');
   const scoreSaved = document.getElementById('score-saved');
   if (exportHighlight) exportHighlight.disabled = savedCount === 0;
@@ -987,15 +1000,34 @@ function updateCounts() {
   if (fastReview) fastReview.disabled = newCount === 0;
 }
 
-function refreshActions(card, status) {
+function addSaveButton(actions, deleteButton, label, pointType, primary) {
+  const save = document.createElement('button');
+  save.className = `${primary ? 'button primary' : 'button secondary'} small`;
+  save.type = 'button';
+  save.dataset[pointType === 'serve' ? 'saveServeClip' : 'saveClip'] = '';
+  save.textContent = label;
+  if (pointType === 'serve') save.title = 'Salvar como ace ou erro de saque';
+  save.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleSave(save.closest('.clip-card'), false, pointType);
+  });
+  actions.insertBefore(save, deleteButton);
+}
+
+function refreshActions(card, status, pointType = null) {
   const actions = card.querySelector('.clip-actions');
   if (!actions) return;
   const deleteButton = actions.querySelector('[data-delete-clip]');
-  actions.querySelectorAll('[data-save-clip], [data-move-new], .badge.done').forEach((item) => item.remove());
+  if (pointType) card.dataset.clipPointType = pointType;
+  const currentType = card.dataset.clipPointType || 'rally';
+  const kindLabel = currentType === 'serve' ? 'Ace/erro' : 'Rally';
+  actions
+    .querySelectorAll('[data-save-clip], [data-save-serve-clip], [data-move-new], .badge.done')
+    .forEach((item) => item.remove());
   if (status === 'saved') {
     const badge = document.createElement('span');
-    badge.className = 'badge done small';
-    badge.textContent = 'Salvo';
+    badge.className = `badge done small${currentType === 'serve' ? ' serve-kind' : ''}`;
+    badge.textContent = `Salvo · ${kindLabel}`;
     const move = document.createElement('button');
     move.className = 'button secondary small';
     move.type = 'button';
@@ -1008,22 +1040,14 @@ function refreshActions(card, status) {
     actions.insertBefore(move, deleteButton);
     actions.insertBefore(badge, move);
   } else {
-    const save = document.createElement('button');
-    save.className = 'button primary small';
-    save.type = 'button';
-    save.dataset.saveClip = '';
-    save.textContent = 'Salvar';
-    save.addEventListener('click', (event) => {
-      event.stopPropagation();
-      handleSave(card);
-    });
-    actions.insertBefore(save, deleteButton);
+    addSaveButton(actions, deleteButton, 'Salvar rally', 'rally', true);
+    addSaveButton(actions, deleteButton, 'Ace/erro', 'serve', false);
   }
   card.dataset.clipStatus = status;
 }
 
-function moveCard(card, status) {
-  refreshActions(card, status);
+function moveCard(card, status, pointType = null) {
+  refreshActions(card, status, pointType);
   const targetPanel = status === 'saved' ? savedPanel : newPanel;
   const grid = ensureGrid(targetPanel);
   if (grid) grid.appendChild(card);
@@ -1096,11 +1120,14 @@ function openClip(card) {
   currentClipId = card.dataset.clipId;
   currentClipStatus = card.dataset.clipStatus;
   currentClipStarred = card.dataset.clipStarred === '1';
+  currentClipPointType = card.dataset.clipPointType || 'rally';
   currentClipStart = parseFloat(card.dataset.clipStart || '0');
   clipVideo.src = card.dataset.src;
   clipVideo.playbackRate = playbackRate;
-  clipModalStatus.textContent = currentClipStatus === 'saved' ? '· salvo' : '· não verificado';
+  const kindLabel = currentClipPointType === 'serve' ? 'ace/erro de saque' : 'rally';
+  clipModalStatus.textContent = currentClipStatus === 'saved' ? `· salvo · ${kindLabel}` : '· não verificado';
   saveClipButton.hidden = currentClipStatus === 'saved';
+  if (saveServeClipButton) saveServeClipButton.hidden = currentClipStatus === 'saved';
   moveClipNewButton.hidden = currentClipStatus !== 'saved';
   starClipButton.textContent = currentClipStarred ? '\u2605 Favorito' : '\u2606 Destacar';
   starClipButton.classList.toggle('active', currentClipStarred);
@@ -1117,6 +1144,7 @@ function closeClip() {
   currentClipId = null;
   currentClipStatus = null;
   currentClipStarred = false;
+  currentClipPointType = 'rally';
   currentClipStart = null;
   currentClipCard = null;
 }
@@ -1277,6 +1305,7 @@ async function applyEditResult(data) {
     const media = card.querySelector('.clip-media');
     if (media) media.appendChild(badge);
   }
+  if (clip.point_type) card.dataset.clipPointType = clip.point_type;
   if (clip.status === 'saved' && !wasSaved) moveCard(card, 'saved');
   else card.dataset.clipStatus = clip.status;
 
@@ -1332,11 +1361,13 @@ async function applyEditResult(data) {
   }
 }
 
-async function changeStatus(card, status) {
+async function changeStatus(card, status, pointType = null) {
+  const payload = { status };
+  if (pointType) payload.point_type = pointType;
   const response = await fetch(`/api/clips/${card.dataset.clipId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
+    body: JSON.stringify(payload)
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -1346,12 +1377,20 @@ async function changeStatus(card, status) {
   return true;
 }
 
-async function handleSave(card, fromModal = false) {
+async function handleSave(card, fromModal = false, pointType = 'rally') {
   if (!card || card.dataset.clipStatus === 'saved') return;
   const next = fromModal ? nextCardAfter(card) : null;
-  if (!(await changeStatus(card, 'saved'))) return;
-  moveCard(card, 'saved');
+  if (!(await changeStatus(card, 'saved', pointType))) return;
+  card.dataset.clipPointType = pointType;
+  moveCard(card, 'saved', pointType);
   if (fromModal) {
+    currentClipStatus = 'saved';
+    currentClipPointType = pointType;
+    saveClipButton.hidden = true;
+    if (saveServeClipButton) saveServeClipButton.hidden = true;
+    moveClipNewButton.hidden = false;
+    const kindLabel = pointType === 'serve' ? 'ace/erro de saque' : 'rally';
+    clipModalStatus.textContent = `· salvo · ${kindLabel}`;
     if (autoAdvanceEnabled() && next) openClip(next);
     else closeClip();
   }
@@ -1364,6 +1403,7 @@ async function handleMoveNew(card, fromModal = false) {
   if (fromModal) {
     currentClipStatus = 'new';
     saveClipButton.hidden = false;
+    if (saveServeClipButton) saveServeClipButton.hidden = false;
     moveClipNewButton.hidden = true;
     clipModalStatus.textContent = '· não verificado';
   }
@@ -1467,7 +1507,13 @@ document.querySelectorAll('[data-open-clip]').forEach((button) => {
 document.querySelectorAll('[data-save-clip]').forEach((button) => {
   button.addEventListener('click', (event) => {
     event.stopPropagation();
-    handleSave(button.closest('.clip-card'));
+    handleSave(button.closest('.clip-card'), false, 'rally');
+  });
+});
+document.querySelectorAll('[data-save-serve-clip]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleSave(button.closest('.clip-card'), false, 'serve');
   });
 });
 document.querySelectorAll('[data-move-new]').forEach((button) => {
@@ -1548,8 +1594,13 @@ clipModal.addEventListener('click', (event) => {
   if (event.target === clipModal) closeClip();
 });
 saveClipButton.addEventListener('click', () => {
-  if (currentClipCard) handleSave(currentClipCard, true);
+  if (currentClipCard) handleSave(currentClipCard, true, 'rally');
 });
+if (saveServeClipButton) {
+  saveServeClipButton.addEventListener('click', () => {
+    if (currentClipCard) handleSave(currentClipCard, true, 'serve');
+  });
+}
 moveClipNewButton.addEventListener('click', () => {
   if (currentClipCard) handleMoveNew(currentClipCard, true);
 });
@@ -1695,7 +1746,10 @@ document.addEventListener('keydown', (event) => {
       if (currentClipCard) openEdit(currentClipCard);
     } else if (key === 's') {
       event.preventDefault();
-      if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true);
+      if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true, 'rally');
+    } else if (key === 'a') {
+      event.preventDefault();
+      if (currentClipCard && currentClipStatus !== 'saved') handleSave(currentClipCard, true, 'serve');
     } else if (key === 'd') {
       event.preventDefault();
       if (currentClipId) openReject(currentClipId, currentClipCard);

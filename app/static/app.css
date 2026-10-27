@@ -1524,6 +1524,12 @@ video {
   background: rgba(251, 191, 36, 0.08);
 }
 
+.badge.done.serve-kind {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
 .video-missing {
   display: flex;
   flex-direction: column;
@@ -1638,6 +1644,35 @@ video {
 
 .library-modal-actions {
   margin-top: 10px;
+}
+
+.library-type-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.point-type-badge {
+  align-self: flex-start;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.point-type-badge.rally {
+  color: var(--accent-2);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.point-type-badge.serve {
+  color: var(--warn);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
 }
 
 @media (max-width: 760px) {
