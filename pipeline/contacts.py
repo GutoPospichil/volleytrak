@@ -19,7 +19,7 @@ def best_ball(record: dict) -> dict | None:
         if ball.get("court")
         and -1.0 <= ball["court"][0] <= 19.0
         and -1.0 <= ball["court"][1] <= 10.0
-        and ball.get("score", 0.0) >= 0.3
+        and (ball.get("interpolated") or ball.get("score", 0.0) >= 0.3)
     ]
     if not candidates:
         return None
@@ -34,7 +34,7 @@ def detect_contacts(
     previous: dict | None = None
     for record in records:
         ball = best_ball(record)
-        if ball is None:
+        if ball is None or ball.get("interpolated"):
             if current:
                 segments.append(current)
                 current = []
@@ -156,7 +156,7 @@ def validate_contacts(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--match-id", type=int, required=True)
-    parser.add_argument("--input", default="ball_vballnet.jsonl")
+    parser.add_argument("--input", default="ball_track.jsonl")
     parser.add_argument("--output", default="contacts.json")
     parser.add_argument("--validate", default="ball_dfine.jsonl")
     args = parser.parse_args()
@@ -167,6 +167,8 @@ def main() -> int:
         return 1
     job_dir = JOB_DIR / f"match-{args.match_id}"
     input_path = job_dir / args.input
+    if not input_path.is_file():
+        input_path = job_dir / "ball_vballnet.jsonl"
     if not input_path.is_file():
         print(f"track não encontrada: {input_path}")
         return 1

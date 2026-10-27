@@ -128,6 +128,12 @@ def filter_windows(
         return windows, 0
     times = [float(sample.get("t", 0.0)) for sample in samples]
     values = [float(sample.get("motion", 0.0)) for sample in samples]
+    ordered = sorted(values)
+    p10 = ordered[max(0, int(round((len(ordered) - 1) * 0.10)))]
+    # O movimento não separa bem rally de tempo morto em todas as câmeras.
+    # Usamos um piso adaptativo conservador: ele só afrouxa o corte quando a
+    # própria partida tem pouca atividade, nunca aperta além do perfil aprendido.
+    effective_min = max(2.0, min(min_mean, p10))
     kept: list[dict] = []
     dropped = 0
     for window in windows:
@@ -143,14 +149,17 @@ def filter_windows(
             continue
         mean = sum(selected) / len(selected)
         maximum = max(selected)
-        active_pct = sum(1 for value in selected if value >= min_mean) / len(selected)
+        active_pct = sum(1 for value in selected if value >= effective_min) / len(selected)
         window["activity_mean"] = round(mean, 2)
         window["activity_max"] = round(maximum, 2)
         window["activity_active_pct"] = round(active_pct, 3)
+        if window.get("source") == "point":
+            kept.append(window)
+            continue
         # Quadra vazia ou todos parados: a media de movimento no miolo da quadra
         # e baixa. Os clipes bons desta partida ficaram acima de 8; 4 e um corte
         # conservador que remove os trechos vazios sem descartar rallies lentos.
-        if mean < min_mean:
+        if mean < effective_min:
             dropped += 1
             continue
         kept.append(window)

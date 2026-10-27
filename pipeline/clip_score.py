@@ -119,7 +119,9 @@ def main() -> int:
         print("partida não encontrada")
         return 1
     job_dir = JOB_DIR / f"match-{args.match_id}"
-    ball_path = job_dir / "ball_vballnet.jsonl"
+    ball_path = job_dir / "ball_track.jsonl"
+    if not ball_path.is_file():
+        ball_path = job_dir / "ball_vballnet.jsonl"
     if not ball_path.is_file():
         ball_path = job_dir / "ball_dfine.jsonl"
     records = load_jsonl(ball_path, [])

@@ -34,9 +34,13 @@ def trim_dead_time(
     pre_roll: float = 1.0,
     post_roll: float = 1.8,
     min_duration: float = 0.0,
+    skip_sources: set[str] | None = None,
 ) -> tuple[list[dict], int]:
     trimmed = 0
+    skip_sources = skip_sources or set()
     for window in windows:
+        if window.get("source") in skip_sources:
+            continue
         if min_duration and (window["end"] - window["start"]) < min_duration:
             continue
         samples: list[tuple[float, list[float]]] = []
@@ -591,7 +595,9 @@ def main() -> int:
         print("vídeo não encontrado")
         return 1
     job_dir = JOB_DIR / f"match-{args.match_id}"
-    ball_path = job_dir / (args.ball or "ball_vballnet.jsonl")
+    ball_path = job_dir / (args.ball or "ball_track.jsonl")
+    if not ball_path.is_file():
+        ball_path = job_dir / "ball_vballnet.jsonl"
     if not args.ball and not ball_path.is_file():
         ball_path = job_dir / "ball_dfine.jsonl"
     if not ball_path.is_file():
@@ -650,6 +656,18 @@ def main() -> int:
         if line.strip()
     ]
     duration = float(records_for_duration[-1]["t"]) if records_for_duration else 0.0
+    detected_frames = sum(
+        1
+        for record in records_for_duration
+        if any(not ball.get("interpolated") for ball in select_balls(record))
+    )
+    match_ball_pct = detected_frames / max(1, len(records_for_duration))
+    learned_min_ball_pct = min_ball_pct
+    min_ball_pct = min(min_ball_pct, max(0.04, match_ball_pct * 1.6))
+    print(
+        f"bola_partida={match_ball_pct:.3f} "
+        f"min_bola={learned_min_ball_pct:.3f}->{min_ball_pct:.3f}"
+    )
     existing_clips = list_clips(args.match_id)
     gaps = find_clip_gaps(existing_clips, duration)
     gap_candidates = (
@@ -735,9 +753,25 @@ def main() -> int:
                 }
             )
 
-    windows: list[dict] = sorted(audio_windows, key=lambda item: item["start"])
+    points_path = job_dir / "points.json"
+    point_windows: list[dict] = []
+    if points_path.is_file():
+        try:
+            point_windows = json.loads(points_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            point_windows = []
+    point_windows = [
+        window
+        for window in point_windows
+        if float(window.get("end", 0)) > float(window.get("start", 0))
+    ]
+    if point_windows:
+        print(f"pontos da máquina de estados={len(point_windows)}")
+        windows: list[dict] = sorted(point_windows, key=lambda item: item["start"])
+    else:
+        windows = sorted(audio_windows, key=lambda item: item["start"])
 
-    def add_complement(candidate: dict, max_overlap: float = 1.5) -> None:
+    def add_complement(candidate: dict, max_overlap: float = 2.0) -> None:
         for existing in windows:
             overlap = max(
                 0.0,
@@ -749,7 +783,7 @@ def main() -> int:
         windows.append(candidate)
 
     contact_min_ball_pct = (
-        min_ball_pct if use_audio else max(0.04, min_ball_pct * 0.25)
+        min_ball_pct if use_audio else max(0.03, min_ball_pct * 0.25)
     )
     for candidate in sorted(contact_candidates, key=lambda item: item["start"]):
         if float(candidate.get("ball_pct", 0.0)) < contact_min_ball_pct:
@@ -765,6 +799,10 @@ def main() -> int:
 
     for candidate in gap_candidates:
         add_complement(candidate)
+
+    if point_windows:
+        for candidate in sorted(audio_windows, key=lambda item: item["start"]):
+            add_complement(candidate)
 
     if not windows:
         for window in speed_windows:
@@ -813,6 +851,7 @@ def main() -> int:
         pre_roll=float(trim_profile.get("pre_roll", 1.0)),
         post_roll=float(trim_profile.get("post_roll", 1.8)),
         min_duration=0.0 if use_audio else 15.0,
+        skip_sources={"point"},
     )
     if trimmed_count:
         print(f"tempo morto aparado em {trimmed_count} candidato(s)")
@@ -904,8 +943,9 @@ def main() -> int:
     gap_total = sum(1 for window in windows if window.get("gap"))
     recovered_total = sum(1 for window in windows if window.get("recovered"))
     print(
-        f"candidatos: {len(windows)} (audio={len(audio_windows)}, "
-        f"lacuna={gap_total}, recuperados={recovered_total})"
+        f"candidatos: {len(windows)} (pontos={len(point_windows)}, "
+        f"audio={len(audio_windows)}, lacuna={gap_total}, "
+        f"recuperados={recovered_total})"
     )
     for window in windows:
         min_y_value = window.get("min_y")
@@ -915,6 +955,8 @@ def main() -> int:
             f"dur={window['duration']:.1f} score={window['score']:.2f} "
             f"min_y={min_y_text} crossings={window.get('crossings', 0)} "
             f"source={window.get('source', 'speed')} "
+            f"tipo={window.get('point_type', '-')} "
+            f"concordancia={window.get('agreement', '-')} "
             f"ranker={window.get('ranker_score', '-')}"
         )
     if not windows:
@@ -956,6 +998,11 @@ def main() -> int:
                 "activity_mean",
                 "activity_max",
                 "activity_active_pct",
+                "point_type",
+                "sources",
+                "agreement",
+                "serve_time",
+                "end_reason",
             )
             if window.get(key) is not None
         }

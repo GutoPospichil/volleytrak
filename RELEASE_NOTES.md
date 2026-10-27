@@ -1,22 +1,34 @@
-# VolleyTrak 0.3.20 beta
+# VolleyTrak 0.3.21 beta
 
-## Salvar rally ou ace/erro de saque
+## Pipeline de clipes mais robusto
 
-- O botão antigo **Salvar** virou **Salvar rally**.
-- Novo botão **Ace/erro** para salvar ace ou erro de saque como um tipo diferente de ponto.
-- Peso no aprendizado:
-  - rally: 1.0 (2.0 com estrela);
-  - ace/erro: 0.7 (1.4 com estrela).
-- Novo motivo de exclusão **Ponto de saque (ace/erro)**, com peso baixo (0.3).
-- Clipes salvos mostram a etiqueta **Rally** ou **Ace/erro de saque**.
-- Aba **Clipes salvos** ganhou o filtro **Todos / Rallies / Aces/erros**.
-- Resumo da partida mostra quantos rallies e quantos aces/erros foram salvos.
-- Atalho **S** salva rally; **A** salva ace/erro no player.
+- **Trajetória da bola tratada** com filtro de Kalman, rejeição de saltos impossíveis e interpolação de falhas curtas.
+- **Contatos** passam a usar a trajetória tratada, reduzindo contatos falsos.
+- **Máquina de estados do ponto**: saque → rally → fim do ponto.
+  - usa apito quando disponível;
+  - usa a posição do saque e a trajetória da bola quando não há apito;
+  - evita pontos sobrepostos;
+  - classifica o clipe como **rally** ou **ponto de saque (ace/erro)**.
+- **Corte mais limpo**: 2–3s antes do saque e 1,5–3s depois do fim do ponto, com duração máxima de 20s.
+- **Limite de bola adaptativo por partida**: partidas com detecção fraca não são mais descartadas por um limite fixo.
+- **Atividade da quadra** agora é um sinal auxiliar; janelas de ponto não são descartadas por baixa atividade.
+- O pipeline reaproveita a trajetória, contatos e atividade já calculados no reprocessamento.
 
-## Base da 0.3.19
+## Resultado no teste
 
-- Aba **Clipes salvos** com reprodução, busca, abertura de pasta e download.
-- Exclusão do vídeo original mantendo os clipes.
+A partida APAV Inclusão foi reprocessada com o novo pipeline:
+
+- 7 clipes salvos preservados;
+- 17 novos candidatos;
+- 24 clipes no total.
+
+O primeiro processamento de uma partida nova ainda roda VballNet e atividade do zero. Reprocessamentos são mais rápidos.
+
+## Base da 0.3.20
+
+- Salvar **Rally** ou **Ace/erro de saque**, com pesos diferentes no aprendizado.
+- Aba **Clipes salvos** com filtros, reprodução e abertura de pasta.
+- Exclusão do vídeo original mantendo clipes.
 - Janela de edição de corte maior.
 - Reprocessamento sem apito.
 - Janelas de CMD escondidas.

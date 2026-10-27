@@ -119,9 +119,13 @@ def windows_from_ball(
         ]
         if not window_balls:
             continue
-        heights = [(ball["box"][1] + ball["box"][3]) / 2 for ball in window_balls]
-        highest = min(heights)
-        if min_y is not None and highest > min_y:
+        heights = [
+            (ball["box"][1] + ball["box"][3]) / 2
+            for ball in window_balls
+            if ball.get("box")
+        ]
+        highest = min(heights) if heights else None
+        if min_y is not None and (highest is None or highest > min_y):
             continue
         window_crossings = sum(1 for t, _ in crossings if start <= t <= end)
         if min_y is None and window_crossings < 1:
@@ -162,7 +166,7 @@ def windows_from_ball(
                 "duration": round(end - start, 1),
                 "active_samples": active_samples,
                 "max_speed": round(max_speed, 1),
-                "min_y": round(highest, 1),
+                "min_y": round(highest, 1) if highest is not None else None,
                 "crossings": window_crossings,
                 "score": score,
             }

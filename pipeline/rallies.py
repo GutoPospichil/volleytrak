@@ -78,7 +78,9 @@ def main() -> int:
     if not whistles:
         print("nenhum apito encontrado; rode pipeline.audio primeiro")
         return 1
-    ball_path = job_dir / (args.ball or "ball_vballnet.jsonl")
+    ball_path = job_dir / (args.ball or "ball_track.jsonl")
+    if not ball_path.is_file():
+        ball_path = job_dir / "ball_vballnet.jsonl"
     if not args.ball and not ball_path.is_file():
         ball_path = job_dir / "ball_dfine.jsonl"
     if not ball_path.is_file():

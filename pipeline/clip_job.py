@@ -74,9 +74,11 @@ def main() -> int:
             log("=== VolleyTrak clip job ===")
             reuse = args.reuse_detections
             ball_path = job_dir / "ball_vballnet.jsonl"
+            track_path = job_dir / "ball_track.jsonl"
             contacts_path = job_dir / "contacts.json"
             activity_path = job_dir / "activity.json"
             rallies_path = job_dir / "rallies_audio.json"
+            points_path = job_dir / "points.json"
 
             reused_ball = bool(reuse and ball_path.is_file())
             if reused_ball:
@@ -99,8 +101,27 @@ def main() -> int:
                     log_file,
                 )
 
+            reused_track = bool(reuse and track_path.is_file())
+            if reused_track:
+                log("reutilizando trajetória tratada da bola")
+                update_progress(
+                    args.match_id, 32, "Reutilizando trajetória da bola..."
+                )
+            else:
+                update_progress(args.match_id, 30, "Tratando trajetória da bola...")
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pipeline.ball_track",
+                        "--match-id",
+                        str(args.match_id),
+                    ],
+                    log_file,
+                )
+
             reused_contacts = bool(
-                reuse and reused_ball and contacts_path.is_file()
+                reuse and reused_track and contacts_path.is_file()
             )
             if reused_contacts:
                 log("reutilizando contatos existentes")
@@ -117,7 +138,7 @@ def main() -> int:
                         "--match-id",
                         str(args.match_id),
                         "--input",
-                        "ball_vballnet.jsonl",
+                        "ball_track.jsonl",
                         "--output",
                         "contacts.json",
                     ],
@@ -159,7 +180,7 @@ def main() -> int:
                             "--match-id",
                             str(args.match_id),
                             "--ball",
-                            "ball_vballnet.jsonl",
+                            "ball_track.jsonl",
                             "--contacts",
                             "contacts.json",
                             "--output",
@@ -196,7 +217,21 @@ def main() -> int:
                     log_file,
                 )
 
-            update_progress(args.match_id, 88, "Cortando clipes...")
+            if reuse and points_path.is_file():
+                log("recalculando pontos a partir das detecções atuais")
+            update_progress(args.match_id, 86, "Montando pontos e rallies...")
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pipeline.points",
+                    "--match-id",
+                    str(args.match_id),
+                ],
+                log_file,
+            )
+
+            update_progress(args.match_id, 90, "Cortando clipes...")
             clips_command = [
                 sys.executable,
                 "-m",
@@ -254,6 +289,7 @@ def main() -> int:
                 "clips_rejected": len(list_clip_rejections(args.match_id)),
                 "clips_starred": sum(1 for clip in clips if clip["starred"]),
                 "clips_gap": sum(1 for clip in clips if clip["source"] == "gap"),
+                "clips_point": sum(1 for clip in clips if clip["source"] == "point"),
                 "clips_recovered": sum(
                     1 for clip in clips if clip["source"] == "recovered"
                 ),
@@ -266,6 +302,7 @@ def main() -> int:
                 "warnings": [
                     "Atividade visual da quadra aplicada: trechos vazios/parados foram descartados.",
                     "Fluxo focado em clipes: sem pipeline de pessoas e sem vídeo anotado.",
+                    "Trajetória da bola tratada e pontos montados por saque/fim de ponto.",
                     (
                         "Modo sem apito: a segmentação usou bola, contatos e atividade visual."
                         if whistle_mode == "without"
@@ -275,10 +312,12 @@ def main() -> int:
                 ],
                 "files": {
                     "ball_vballnet": "ball_vballnet.jsonl",
+                    "ball_track": "ball_track.jsonl",
                     "whistles": "whistles.json",
                     "contacts": "contacts.json",
                     "rallies_audio": "rallies_audio.json",
                     "activity": "activity.json",
+                    "points": "points.json",
                     "log": "clip_job.log",
                 },
                 "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

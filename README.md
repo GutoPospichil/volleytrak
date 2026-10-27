@@ -49,6 +49,18 @@ O VolleyTrak ignora o áudio e refaz os clipes usando bola, contatos e atividade
 - As exclusões anteriores continuam valendo.
 - Quando a partida está em modo sem apito, aparece o botão **Reprocessar com apito** para voltar ao modo original.
 
+## Como os clipes são gerados
+
+O pipeline agora tem cinco etapas principais:
+
+1. **VballNet** detecta a bola em 30 fps.
+2. **Tratamento da trajetória** aplica um filtro de Kalman, rejeita saltos impossíveis e interpola falhas curtas.
+3. **Contatos** são detectados por mudança de direção e aceleração da bola.
+4. **Máquina de estados** monta cada ponto: saque → troca de bola → fim do ponto. Ela usa apito quando existe, regras de saque e trajetória da bola, e evita pontos sobrepostos.
+5. **Clipes** são cortados com 2–3s antes do saque e 1,5–3s depois do fim, classificados como **rally** ou **ponto de saque/ace**.
+
+O limite de bola é ajustado por partida: se a detecção da bola estiver fraca, o app fica mais tolerante em vez de descartar tudo. A atividade da quadra ajuda a ordenar e filtrar, mas não decide sozinha o que é rally.
+
 ## Clipes salvos
 
 A aba **Clipes salvos** mostra todos os clipes salvos de todas as partidas, agrupados por partida.

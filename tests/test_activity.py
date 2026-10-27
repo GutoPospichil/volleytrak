@@ -34,6 +34,22 @@ class ActivityFilterTest(unittest.TestCase):
         self.assertEqual(dropped, 0)
         self.assertEqual(kept, windows)
 
+    def test_keeps_point_window_even_with_low_activity(self):
+        activity = {
+            "samples": [{"t": float(t), "motion": 0.5} for t in range(0, 11)]
+        }
+        windows = [
+            {
+                "start": 0.0,
+                "end": 10.0,
+                "duration": 10.0,
+                "source": "point",
+            }
+        ]
+        kept, dropped = filter_windows(windows, activity, min_mean=4.0)
+        self.assertEqual(dropped, 0)
+        self.assertEqual(len(kept), 1)
+
     def test_missing_activity_keeps_all(self):
         windows = [{"start": 0.0, "end": 10.0, "duration": 10.0}]
         kept, dropped = filter_windows(windows, None)
