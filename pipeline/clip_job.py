@@ -300,7 +300,7 @@ def main() -> int:
             result = {
                 "summary": summary,
                 "warnings": [
-                    "Atividade visual da quadra aplicada: trechos vazios/parados foram descartados.",
+                    "Atividade visual usada como sinal auxiliar; pontos de saque/rally não são descartados só por baixa atividade.",
                     "Fluxo focado em clipes: sem pipeline de pessoas e sem vídeo anotado.",
                     "Trajetória da bola tratada e pontos montados por saque/fim de ponto.",
                     (

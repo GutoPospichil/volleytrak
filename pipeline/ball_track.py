@@ -216,10 +216,10 @@ def track_ball(
                 best = max(found, key=lambda item: item["score"])
                 if best["score"] >= 0.3:
                     start_track(index, t, best)
-                    chosen = best
-            if chosen is None:
-                last_time = t
-                continue
+                    last_time = t
+                    continue
+            last_time = t
+            continue
 
         if not confirmed:
             pending.append((index, t, chosen))
